@@ -7,8 +7,9 @@
 02.10.2016 DL9LJ: add code for controlling ICOM IC-735 (UART).
 */
 /* 03.10.2016 DL8GM and DG8MG: Modified code for Charly 25 - 4 band transceiver board switching via I2C.
-11.10.2016 DG8MG: Modified code for band independent switching of the two preamps on the Charly 25 LC board
+11.10.2016 DG8MG: Modified code for band independent switching of the two preamps on the Charly 25 LC board.
 15.11.2016 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/e6bcfe06d8e7f9191cce2b8f7463f82f81b0d3b0
+19.11.2016 DG8MG: Changed LPF frequency ranges to cover the IARU region 1-3 band plan requirements.
 */
 
 // DG8MG
@@ -22,7 +23,7 @@
 #define CHARLY25LC_HAMLAB 1
 
 // Define DEBUG for debug messages
-// #DEBUG 1
+// # define DEBUG 1
 // DG8MG
 
 #include <stdio.h>
@@ -334,7 +335,6 @@ int main(int argc, char *argv[])
         i2c_4band = true;
         /* configure all pins as output */
         i2c_write(i2c_fd, 0x06, 0x0000);
-        // fprintf(stderr, "4Band: %d, Configure all pins as output - i2c_write return value: %d\n", i2c_4band, i2c_write(i2c_fd, 0x06, 0x0000));
       }
       else
       {
@@ -355,7 +355,7 @@ int main(int argc, char *argv[])
   }
   
   // Version info for debugging only!
-  fprintf(stderr, "Version 15112016: Charly 25LC / Hamlab Edition\n");
+  fprintf(stderr, "Version 19112016: Charly 25LC / Hamlab Edition\n");
 #endif
 
 #ifndef CHARLY25LC
@@ -741,7 +741,7 @@ int main(int argc, char *argv[])
 
 void process_ep2(uint8_t *frame)
 {
-  uint32_t freq;
+  uint32_t freq, c25lc_freq;
   uint16_t data;
   uint16_t cw_hang;
   uint8_t cw_reversed, cw_speed, cw_mode, cw_weight, cw_spacing, cw_delay;
@@ -823,17 +823,9 @@ void process_ep2(uint8_t *frame)
       }
 
 #ifdef CHARLY25LC
-      /* Wipe bytes that might get changed in this frame */
-      /* first f are LPFs, second f is unused so far */
-      new_i2c_4band_data &= 0x0ff0;
-
-      /* PTT */
-      new_i2c_4band_data |= (frame[0] & 1) << 12;
-      /* Turn on PA if at least one LPF is open */
-      if((new_i2c_4band_data & 0x0f00) != 0)
-      {
-        new_i2c_4band_data |= (frame[0] & 1) << 13;
-      }
+      /* Wipe bits that might get changed in this frame */
+      /* second f are LPFs */
+      new_i2c_4band_data &= 0xfff0;
 
       /* Attenuator */
       new_i2c_4band_data |= frame[3] & 3;
@@ -854,7 +846,7 @@ C3
   
       /* Activate preamp one and two as expected from the frontend software (f.e. PowerSDR Charly 25 / Hamlab Edition) */
       new_i2c_4band_data |= frame[3] & 12;
-	  break;
+      break;
 #endif
 
 #ifndef CHARLY25LC_STRIPPED
@@ -894,39 +886,51 @@ C3
     case 2:
     case 3:
       /* set tx phase increment */
-      freq = ntohl(*(uint32_t *)(frame + 1));
-
 #ifdef CHARLY25LC
-      if(freq < freq_min || freq > freq_max) break;
-      *tx_freq = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
-  
+      c25lc_freq = ntohl(*(uint32_t *)(frame + 1));
+
+      if(c25lc_freq < freq_min || c25lc_freq > freq_max) break;
+      *tx_freq = (uint32_t)floor(c25lc_freq / 125.0e6 * (1 << 30) + 0.5);
+
+      /* Wipe bits that might get changed in this frame */  
+      new_i2c_4band_data &= 0x00ff;
+
       /* Switch LPF depending on TX frequency */
-      /* Cutoff frequencies aren't adjusted to actual filter curves atm, and
-         roughly follow the amateur radio bands with some generous padding. Just
-         like preamp settings, this should probably be configurable via web
-         interface to make switching filters easier */
-      new_i2c_4band_data &= 0xf0ff;
-      if(30000000 > freq && freq > 24500000) /* 10m LPF can be used on 12m */
+      if(29705000 > c25lc_freq && c25lc_freq >= 27995000) /* 10m LPF */
       {
         new_i2c_4band_data |= 1 << 8;
       }
-      else if(14500000 > freq && freq > 13800000)
+      else if(14355000 > c25lc_freq && c25lc_freq >= 13995000) /* 20m LPF */
       {
         new_i2c_4band_data |= 1 << 9;
       }
-      else if(7500000 > freq && freq > 6800000)
+      else if(7305000 > c25lc_freq && c25lc_freq >= 6995000) /* 40m LPF */
       {
         new_i2c_4band_data |= 1 << 10;
       }
-      else if(4200000 > freq && freq > 3300000)
+      else if(4005000 > c25lc_freq && c25lc_freq >= 3495000) /* 80m LPF */
       {
         new_i2c_4band_data |= 1 << 11;
       }
-	  break;
+      
+      /* Turn PTT and PA only on if a LPF is active */
+      if((new_i2c_4band_data & 0x0f00) != 0)
+      {
+        new_i2c_4band_data |= (frame[0] & 1) << 12;
+        new_i2c_4band_data |= (frame[0] & 1) << 13;
+      }
+
+#ifdef DEBUG 
+      fprintf(stderr, "LPF %d0m on\n", (new_i2c_4band_data & 0x0f00) >> 8);
+      fprintf(stderr, "PA and PTT state %d\n", (new_i2c_4band_data & 0x3000) >> 12);
+#endif
+
+      break;
 #endif
 
 #ifndef CHARLY25LC_STRIPPED
-      if(alex_data_1 != freq)
+     freq = ntohl(*(uint32_t *)(frame + 1));
+     if(alex_data_1 != freq)
       {
         alex_data_1 = freq;
         alex_write();
@@ -1112,6 +1116,7 @@ C3
   fprintf(stderr, "Frame[3]: %d\n", frame[3]);
   fprintf(stderr, "Frame[4]: %d\n", frame[4]);
   fprintf(stderr, "i2c_4band: %d, new_i2c_4band_data: %x\n", i2c_4band, new_i2c_4band_data);
+  fprintf(stderr, "freq: %d, c25lc_freq: %d\n\n", freq, c25lc_freq);
 #endif
  
 #endif
