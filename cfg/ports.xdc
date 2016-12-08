@@ -172,6 +172,9 @@ set_property PACKAGE_PIN L17 [get_ports {exp_n_alex[1]}]
 set_property PACKAGE_PIN J16 [get_ports {exp_n_alex[2]}]
 set_property PACKAGE_PIN M15 [get_ports {exp_n_alex[3]}]
 
+set_property PULLUP TRUE [get_ports {exp_n_tri_io[1]}]
+set_property PULLUP TRUE [get_ports {exp_n_tri_io[2]}]
+
 ### SATA connector
 
 set_property IOSTANDARD DIFF_HSTL_I_18 [get_ports daisy_p_o[*]]
