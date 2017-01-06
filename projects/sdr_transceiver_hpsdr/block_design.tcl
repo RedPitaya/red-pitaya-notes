@@ -110,11 +110,11 @@ cell pavel-demin:user:axi_cfg_register:1.0 cfg_0 {
 delete_bd_objs [get_bd_ports exp_n_tri_io]
 
 # Create input/output port
-create_bd_port -dir IO -from 3 -to 0 exp_n_tri_io
+create_bd_port -dir IO -from 2 -to 0 exp_n_tri_io
 
 # Create gpio_debouncer
 cell pavel-demin:user:gpio_debouncer:1.0 gpio_0 {
-  DATA_WIDTH 4
+  DATA_WIDTH 3
   CNTR_WIDTH 16
 } {
   gpio_data exp_n_tri_io
@@ -123,7 +123,7 @@ cell pavel-demin:user:gpio_debouncer:1.0 gpio_0 {
 
 # Create util_vector_logic
 cell xilinx.com:ip:util_vector_logic:2.0 not_0 {
-  C_SIZE 4
+  C_SIZE 3
   C_OPERATION not
 } {
   Op1 gpio_0/deb_data
@@ -133,11 +133,11 @@ cell xilinx.com:ip:util_vector_logic:2.0 not_0 {
 delete_bd_objs [get_bd_ports exp_p_tri_io]
 
 # Create output port
-create_bd_port -dir O -from 7 -to 0 exp_p_tri_io
+create_bd_port -dir O -from 0 -to 0 exp_p_tri_io
 
 # Create xlslice
 cell xilinx.com:ip:xlslice:1.0 out_slice_0 {
-  DIN_WIDTH 320 DIN_FROM 31 DIN_TO 24 DOUT_WIDTH 8
+  DIN_WIDTH 320 DIN_FROM 24 DIN_TO 24 DOUT_WIDTH 1
 } {
   Din cfg_0/cfg_data
 }
@@ -160,7 +160,7 @@ cell xilinx.com:ip:util_vector_logic:2.0 or_0 {
 
 # Create util_vector_logic
 cell xilinx.com:ip:util_vector_logic:2.0 or_1 {
-  C_SIZE 8
+  C_SIZE 1
   C_OPERATION or
 } {
   Op1 out_slice_0/Dout
@@ -346,7 +346,7 @@ cell xilinx.com:ip:xlconcat:2.1 concat_0 {
   IN3_WIDTH 16
   IN4_WIDTH 16
   IN5_WIDTH 16
-  IN6_WIDTH 4
+  IN6_WIDTH 3
 } {
   In0 const_1/dout
   In1 dna_0/dna_data
