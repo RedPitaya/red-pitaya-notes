@@ -165,6 +165,14 @@ cell xilinx.com:ip:util_vector_logic:2.0 or_1 {
 } {
   Op1 out_slice_0/Dout
   Op2 or_0/Res
+}
+
+# PTT output negator
+cell xilinx.com:ip:util_vector_logic:2.0 not_ptt_out {
+  C_SIZE 1
+  C_OPERATION not
+} {
+  Op1 or_1/Res
   Res exp_p_tri_io
 }
 
