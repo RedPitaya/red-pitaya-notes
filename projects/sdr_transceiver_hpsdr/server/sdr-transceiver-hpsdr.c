@@ -75,6 +75,7 @@
 #ifdef CHARLY25LC
 /* I2C address of the 4-band trx frontend */
 const unsigned long ADDR_4BAND = 0x20;
+const unsigned long ADDR_ID = 0x14;
 #endif
 
 volatile uint32_t *rx_freq[4], *rx_rate, *tx_freq, *alex, *tx_mux, *dac_freq, *dac_mux;
@@ -364,6 +365,7 @@ int main(int argc, char *argv[])
   struct timeval tv;
   struct timespec ts;
   int yes = 1;
+  int8_t codec_available = 0;
 
   if((fd = open("/dev/mem", O_RDWR)) < 0)
   {
@@ -379,6 +381,19 @@ int main(int argc, char *argv[])
 
 #ifdef CHARLY25LC
   {
+	if(ioctl(i2c_fd, I2C_SLAVE, ADDR_ID)>= 0){
+	  //uninvert input - default is 0xf0
+	  i2c_write_addr_data8(i2c_fd,0x2,0x0);
+	  //set pins for input default is 0xff so no need
+	  //i2c_write_addr_data8(i2c_fd, 0x3, 0xff);
+	  uint8_t buffer[1];buffer[0]=0x0;
+	  if (read(i2c_fd, buffer, 1) == 1) {
+	    if(buffer[0]==0x81){
+		  codec_available = 1;
+		}
+	  }
+	}
+	// for charly25lc
     if(ioctl(i2c_fd, I2C_SLAVE_FORCE, ADDR_4BAND) >= 0)
     {
       /* set all pins to low */
@@ -514,7 +529,7 @@ int main(int argc, char *argv[])
   }
 #endif
 
-#ifdef CHARLY25_CODEC
+if (codec_available){
 int i2c_codec_fd;
 if((i2c_codec_fd = open("/dev/i2c-6", O_RDWR)) >= 0)
     if(ioctl(i2c_codec_fd, I2C_SLAVE, ADDR_CODEC) >= 0)
@@ -542,12 +557,12 @@ if((i2c_codec_fd = open("/dev/i2c-6", O_RDWR)) >= 0)
         i2c_write_addr_data8(i2c_codec_fd, 0x0c, 0x41);
 
         if(i2c_codec_fd){
-		close(i2c_codec_fd);
-		i2c_codec_fd=-1;
-	}
+               close(i2c_codec_fd);
+               i2c_codec_fd=-1;
+       }
       }
     }
-#endif
+}
 
   slcr = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0xF8000000);
   sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40000000);
