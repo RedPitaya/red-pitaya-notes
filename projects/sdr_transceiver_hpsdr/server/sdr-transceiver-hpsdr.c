@@ -381,7 +381,7 @@ int main(int argc, char *argv[])
 
 #ifdef CHARLY25LC
   {
-	if(ioctl(i2c_fd, I2C_SLAVE, ADDR_ID)>= 0){
+	/*if(ioctl(i2c_fd, I2C_SLAVE, ADDR_ID)>= 0){
 	  //uninvert input - default is 0xf0
 	  i2c_write_addr_data8(i2c_fd,0x2,0x0);
 	  //set pins for input default is 0xff so no need
@@ -392,7 +392,8 @@ int main(int argc, char *argv[])
 		  codec_available = 1;
 		}
 	  }
-	}
+	}*/
+	  codec_available = 1;
 	// for charly25lc
     if(ioctl(i2c_fd, I2C_SLAVE_FORCE, ADDR_4BAND) >= 0)
     {
