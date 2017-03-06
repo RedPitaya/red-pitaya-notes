@@ -1,9 +1,12 @@
 #! /bin/sh
 
-TRANSMITTER=/root/transmit-wspr-message
-CONFIG=/root/transmit-wspr-message.cfg
+DIR=`readlink -f $0`
+DIR=`dirname $DIR`
 
-GPIO=/root/gpio-output
+TRANSMITTER=$DIR/transmit-wspr-message
+CONFIG=$DIR/transmit-wspr-message.cfg
+
+GPIO=$DIR/gpio-output
 
 date
 
