@@ -23,6 +23,7 @@
 16.02.2017 DG8MG: Added backward compatibility for the Charly 25LC (4 band version) board.
 24.02.2017 DG8MG: Added 60m band usage together with the 40m LPF filter on a Charly 25LC board
 05.03.2017 DG8MG: Changed the behaviour of the RX/TX and PA relay switching routines to handle CW keying correctly
+29.03.2017 DG8MG: Modified code to make it compatible with Red Pitaya's commit: https://github.com/RedPitaya/red-pitaya-notes/commit/eec0f694700ba94e58640817fbd072737ad2d7bf
 */
 
 // DG8MG
@@ -36,7 +37,7 @@
 // #define CHARLY25LC_60M_BAND
 
 // Define if codec is used
-#define CHARLY25_CODEC 1
+// #define CHARLY25_CODEC 1
 
 // Define CHARLY25AB_HAMLAB together with CHARLY25AB for HAMlab specific builds
 #define CHARLY25AB_HAMLAB 1
@@ -146,7 +147,7 @@ const uint32_t C25_160M_HIGH_FREQ = 2005000;
 
 volatile uint32_t *rx_freq[4], *rx_rate, *tx_freq, *alex, *tx_mux, *dac_freq, *dac_mux;
 volatile uint16_t *rx_cntr, *tx_cntr, *tx_level, *dac_cntr, *dac_level, *adc_cntr;
-volatile uint8_t *gpio_in, *gpio_out, *rx_rst, *tx_rst, *codec_rst;
+volatile uint8_t *gpio_in, *gpio_out, *rx_rst, *tx_rst, *lo_rst;
 volatile uint64_t *rx_data;
 volatile uint32_t *tx_data, *dac_data;
 volatile uint16_t *adc_data;
@@ -213,9 +214,12 @@ uint8_t cw_mode = 0;
 uint8_t cw_weight = 50;
 uint8_t cw_spacing = 0;
 uint8_t cw_delay = 0;
+uint8_t cw_ptt = 0;
 
 int cw_memory[2] = {0, 0};
 int cw_ptt_delay = 0;
+
+uint16_t rx_sync_data = 0;
 
 ssize_t i2c_write_addr_data8(int fd, uint8_t addr, uint8_t data)
 {
@@ -337,17 +341,17 @@ inline int lower_bound(int *array, int size, int value)
 
 void misc_write()
 {
-  uint16_t code, data = 0;
-  int i, freqs[20] = {1700000, 2100000, 3400000, 4100000, 6900000, 7350000, 9950000, 10200000, 13850000, 14500000, 18000000, 18250000, 20850000, 21650000, 24700000, 25150000, 27000000, 30000000, 49000000, 55000000};
+  uint16_t code[3], data = 0;
+  int i, freqs[20] = {1700000, 2100000, 3400000, 4100000, 6900000, 7350000, 9950000, 10200000, 12075000, 16209000, 16210000, 19584000, 19585000, 23170000, 23171000, 26465000, 26466000, 39850000, 39851000, 61000000};
 
   for(i = 0; i < 3; ++i)
   {
-    code = lower_bound(freqs, 20, freq_data[i]);
-    code = code % 2 ? code / 2 + 1 : 0;
-    data |= code << (i * 4);
+    code[i] = lower_bound(freqs, 20, freq_data[i]);
+    code[i] = code[i] % 2 ? code[i] / 2 + 1 : 0;
   }
 
-  data |= (misc_data_0 & 0x03) << 14 | (misc_data_1 & 0x18) << 9;
+  data |= (code[0] != code[1]) << 8 | code[2] << 4 | code[1];
+  data |= (misc_data_0 & 0x03) << 11 | (misc_data_1 & 0x18) << 6;
 
   if(i2c_misc_data != data)
   {
@@ -785,7 +789,7 @@ int main(int argc, char *argv[])
 #endif
   
   // Version and hardware info for debugging only!
-  fprintf(stderr, "Version 05032017: ");
+  fprintf(stderr, "Version 29032017: ");
 #ifdef CHARLY25AB_HAMLAB
   fprintf(stderr, "HAMlab Edition\n");
 #else
@@ -921,8 +925,8 @@ int main(int argc, char *argv[])
   xadc = mmap(NULL, 16*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40020000);
 
   rx_rst = ((uint8_t *)(cfg + 0));
-  tx_rst = ((uint8_t *)(cfg + 1));
-  codec_rst = ((uint8_t *)(cfg + 2));
+  lo_rst = ((uint8_t *)(cfg + 1));
+  tx_rst = ((uint8_t *)(cfg + 2));
   gpio_out = ((uint8_t *)(cfg + 3));
 
   rx_rate = ((uint32_t *)(cfg + 4));
@@ -993,10 +997,10 @@ int main(int argc, char *argv[])
   if(i2c_codec)
   {
     /* reset codec ADC fifo */
-    *codec_rst |= 1;
-    *codec_rst &= ~1;
+    *rx_rst |= 2;
+    *rx_rst &= ~2;
     /* enable I2S interface */
-    *codec_rst &= ~2;
+    *rx_rst &= ~4;
 
     /* set default dac phase increment */
     *dac_freq = (uint32_t)floor(600 / 48.0e3 * (1 << 30) + 0.5);
@@ -1025,7 +1029,7 @@ int main(int argc, char *argv[])
   else
   {
     /* enable ALEX interface */
-    *codec_rst |= 2;
+    *rx_rst |= 4;
   }
 
   if((sock_ep2 = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -1152,6 +1156,10 @@ int main(int argc, char *argv[])
           addr_ep6.sin_port = addr_from[i].sin_port;
           enable_thread = 1;
           active_thread = 1;
+          rx_sync_data = 0;
+          /* reset all los */
+          *lo_rst &= ~31;
+          *lo_rst |= 31;
           if(pthread_create(&thread, NULL, handler_ep6, NULL) < 0)
           {
             perror("pthread_create");
@@ -1181,6 +1189,18 @@ void process_ep2(uint8_t *frame)
     case 0:
     case 1:
       receivers = ((frame[4] >> 3) & 7) + 1;  // C4: Bit 3-5 - Number of Receivers (000 = 1, 111 = 8)
+      data = (frame[4] >> 7) & 1;
+      if(rx_sync_data != data)
+      {
+        rx_sync_data = data;
+        if(rx_sync_data)
+        {
+          *rx_freq[1] = *rx_freq[0];
+          /* reset first two los */
+          *lo_rst &= ~3;
+          *lo_rst |= 3;
+        }
+      }
 
 #ifndef CHARLY25AB
       /* set output pins */
@@ -1281,16 +1301,16 @@ void process_ep2(uint8_t *frame)
 #endif
 
 #ifndef CHARLY25AB
-     freq = ntohl(*(uint32_t *)(frame + 1));
-     if(freq_data[0] != freq)
+      freq = ntohl(*(uint32_t *)(frame + 1));
+      if(freq < freq_min || freq > freq_max) break;
+      *tx_freq = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
+      if(freq_data[0] != freq)
       {
         freq_data[0] = freq;
         alex_write();
         icom_write();
         if(i2c_misc) misc_write();
       }
-      if(freq < freq_min || freq > freq_max) break;
-      *tx_freq = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
       break;
 #endif
 
@@ -1307,6 +1327,14 @@ void process_ep2(uint8_t *frame)
 
       if(c25_rx1_freq < freq_min || c25_rx1_freq > freq_max) break;
       *rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 125.0e6 * (1 << 30) + 0.5);
+      if(rx_sync_data) *rx_freq[1] = *rx_freq[0];
+
+      if(rx_sync_data)
+      {
+        /* reset first two los */
+        *lo_rst &= ~3;
+        *lo_rst |= 3;
+      }
 
       if (c25_rx1_bpf_i2c_present)
       {
@@ -1317,20 +1345,28 @@ void process_ep2(uint8_t *frame)
 
 #ifndef CHARLY25AB
       freq = ntohl(*(uint32_t *)(frame + 1));
+      if(freq < freq_min || freq > freq_max) break;
+      *rx_freq[0] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
+      if(rx_sync_data) *rx_freq[1] = *rx_freq[0];
       if(freq_data[1] != freq)
       {
         freq_data[1] = freq;
+        if(rx_sync_data)
+        {
+          /* reset first two los */
+          *lo_rst &= ~3;
+          *lo_rst |= 3;
+        }
         alex_write();
         if(i2c_misc) misc_write();
       }
-      if(freq < freq_min || freq > freq_max) break;
-      *rx_freq[0] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
       break;
 #endif
       
     case 6:  // C0: Bit 1-4 - Receiver 2 - C0: Bit 0 - MOX -> 0 = inactive
     case 7:  // C0: Bit 1-4 - Receiver 2 - C0: Bit 0 - MOX -> 1 = active
       /* set rx phase increment */
+      if(rx_sync_data) break;
 
 #ifdef CHARLY25AB
       c25_rx2_freq = ntohl(*(uint32_t *)(frame + 1));
@@ -1349,16 +1385,17 @@ void process_ep2(uint8_t *frame)
       break;
 #endif  
 
+
 #ifndef CHARLY25AB
       freq = ntohl(*(uint32_t *)(frame + 1));
+      if(freq < freq_min || freq > freq_max) break;
+      *rx_freq[1] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
       if(freq_data[2] != freq)
       {
         freq_data[2] = freq;
         alex_write();
         if(i2c_misc) misc_write();
       }
-      if(freq < freq_min || freq > freq_max) break;
-      *rx_freq[1] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
       break;
 #endif
       
@@ -1574,8 +1611,8 @@ void *handler_ep6(void *arg)
   if(i2c_codec)
   {
     /* reset codec ADC fifo */
-    *codec_rst |= 1;
-    *codec_rst &= ~1;
+    *rx_rst |= 2;
+    *rx_rst &= ~2;
   }
   
   /* reset rx fifo */
@@ -1590,20 +1627,13 @@ void *handler_ep6(void *arg)
     n = 504 / size;
     m = 256 / n;
 
-    if(*rx_cntr >= 8192)
-    {
-      /* reset rx fifo */
-      *rx_rst |= 1;
-      *rx_rst &= ~1;
-    }
-
     if((i2c_codec && *adc_cntr >= 1024) || *rx_cntr >= 8192)
     {
       if(i2c_codec)
       {
         /* reset codec ADC fifo */
-        *codec_rst |= 1;
-        *codec_rst &= ~1;
+        *rx_rst |= 2;
+        *rx_rst &= ~2;
       }
 
       /* reset rx fifo */
@@ -1642,9 +1672,7 @@ void *handler_ep6(void *arg)
     {
       pointer = buffer + i * 516 - i % 2 * 4 + 8;
       memcpy(pointer, header + header_offset, 8);
-      pointer[3] |= *gpio_in & 7;
-      pointer[3] |= tx_mux_data & 0x01;
-
+      pointer[3] |= (*gpio_in & 7) | cw_ptt;
       if(header_offset == 8)
       {
         value = xadc[153] >> 3;
@@ -1707,7 +1735,9 @@ inline void cw_on()
 {
   int delay = 1200 / cw_speed;
   if(cw_delay < delay) delay = cw_delay;
-  *tx_rst |= 16; /* PTT on */
+  /* PTT on */
+  *tx_rst |= 16;
+  cw_ptt = 1;
   tx_mux[16] = 1;
   tx_mux[0] = 2;
   tx_mux_data = 1;
@@ -1757,7 +1787,9 @@ inline void cw_off()
 inline void cw_ptt_off()
 {
   if(--cw_ptt_delay > 0) return;
-  *tx_rst &= ~16; /* PTT off */
+  /* PTT off */
+  *tx_rst &= ~16;
+  cw_ptt = 0;
   /* reset tx fifo */
   *tx_rst |= 1;
   *tx_rst &= ~1;
