@@ -1,7 +1,7 @@
 device=$1
 
-boot_dir=/tmp/BOOT
-root_dir=/tmp/ROOT
+boot_dir=`mktemp -d /tmp/BOOT.XXXXXXXXXX`
+root_dir=`mktemp -d /tmp/ROOT.XXXXXXXXXX`
 
 # Choose mirror automatically, depending the geographic and network location
 mirror=http://httpredir.debian.org/debian
@@ -29,8 +29,6 @@ mkfs.vfat -v $boot_dev
 mkfs.ext4 -F -j $root_dev
 
 # Mount file systems
-
-mkdir -p $boot_dir $root_dir
 
 mount $boot_dev $boot_dir
 mount $root_dev $root_dir
@@ -65,6 +63,7 @@ cp projects/sdr_transceiver_wspr/transmit-wspr.sh $root_dir/root/
 cp projects/sdr_transceiver_wspr/write-c2-files.c $root_dir/root/
 cp projects/sdr_transceiver_wspr/write-c2-files.cfg $root_dir/root/
 cp projects/sdr_transceiver_wspr/decode-wspr.sh $root_dir/root/
+cp projects/sdr_transceiver_wspr/gpio-output.c $root_dir/root/
 cp projects/sdr_transceiver_wspr/wspr.cron $root_dir/root/
 cp projects/sdr_transceiver_wspr/README $root_dir/root/
 cp projects/sdr_transceiver_wspr/Makefile $root_dir/root/
@@ -298,3 +297,5 @@ rm $root_dir/usr/bin/qemu-arm-static
 umount $boot_dir $root_dir
 
 rmdir $boot_dir $root_dir
+
+zerofree $root_dev
