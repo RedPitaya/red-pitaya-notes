@@ -24,6 +24,7 @@
 24.02.2017 DG8MG: Added 60m band usage together with the 40m LPF filter on a Charly 25LC board
 05.03.2017 DG8MG: Changed the behaviour of the RX/TX and PA relay switching routines to handle CW keying correctly
 29.03.2017 DG8MG: Modified code to make it compatible with Red Pitaya's commit: https://github.com/RedPitaya/red-pitaya-notes/commit/eec0f694700ba94e58640817fbd072737ad2d7bf
+04.01.2017 DG8MG: Changed CW straight key behaviour for Charly 25 boards
 */
 
 // DG8MG
@@ -47,6 +48,9 @@
 
 // Define DEBUG_CW for CW debug messages
 // #define DEBUG_CW 1
+
+// Define DEBUG_LPF for TX LPF debug messages
+// #define DEBUG_LPF
 
 // Define DEBUG_PA for PA & PTT debug messages
 // #define DEBUG_PA 1
@@ -469,15 +473,15 @@ uint16_t c25ab_switch_tx_lpf(bool mox, uint16_t c25ab_i2c_data, uint32_t c25_tx_
   {
     c25ab_tx_lpf_i2c_new_data |= 1 << 10;
   }
-  else if((C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ) || (C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ))  /* 20/30m LPF */
+  else if(C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ)  /* 20 LPF */
   {
     c25ab_tx_lpf_i2c_new_data |= 1 << 11;
   }
-  else if((C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ) || (C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ))  /* 40/60m LPF */
+  else if((C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ) || (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ))  /* 30/40m LPF */
   {
     c25ab_tx_lpf_i2c_new_data |= 1 << 12;
   }
-  else if(C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ)  /* 80m LPF */
+  else if((C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ) || (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ))  /* 60/80m LPF */
   {
     c25ab_tx_lpf_i2c_new_data |= 1 << 13;
   }
@@ -493,21 +497,21 @@ uint16_t c25ab_switch_tx_lpf(bool mox, uint16_t c25ab_i2c_data, uint32_t c25_tx_
     c25ab_tx_lpf_i2c_new_data |= ((mox & 1) | (tx_mux_data & 1)) << 5;  // C0: Bit 0 - MOX (1 = active, 0 = inactive)
   }
 
-#ifdef DEBUG
-  fprintf(stderr, "LPF bitmask in hex: %x\n", (c25ab_tx_lpf_i2c_new_data & 0x7f00) >> 8);
-  fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_new_data & 0x0030) >> 4);
-  fprintf(stderr, "c25ab_i2c_present: %d, c25ab_tx_lpf_i2c_new_data in hex: %x\n", c25ab_i2c_present, c25ab_tx_lpf_i2c_new_data); 
-#endif  
-
   if (c25ab_tx_lpf_i2c_new_data != c25ab_tx_lpf_i2c_data)
   {
     c25ab_tx_lpf_i2c_data = c25ab_tx_lpf_i2c_new_data;
     ioctl(i2c_fd, I2C_SLAVE, C25_ADDR);
     i2c_write_addr_data16(i2c_fd, 0x02, c25ab_tx_lpf_i2c_data);
     
+#ifdef DEBUG_LPF
+  fprintf(stderr, "LPF bitmask in hex: %x\n", (c25ab_tx_lpf_i2c_new_data & 0x7f00) >> 8);
+  fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_new_data & 0x0030) >> 4);
+  fprintf(stderr, "c25ab_i2c_present: %d, c25ab_tx_lpf_i2c_new_data in hex: %x\n", c25ab_i2c_present, c25ab_tx_lpf_i2c_new_data); 
+#endif  
+
 #ifdef DEBUG_PA
     fprintf(stderr, "gpio_in: %u, mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, mox, tx_mux_data, c25_tx_freq);
-    fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_data & 0x3000) >> 12);
+    fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_data & 0x0030) >> 4);
 #endif 
   }
   
@@ -554,7 +558,7 @@ uint16_t c25lc_switch_tx_lpf(bool mox, uint16_t c25lc_i2c_data, uint32_t c25_tx_
     c25lc_tx_lpf_i2c_new_data |= ((mox & 1) | (tx_mux_data & 1)) << 13;  // C0: Bit 0 - MOX (1 = active, 0 = inactive)
   }
 
-#ifdef DEBUG
+#ifdef DEBUG_LPF
   fprintf(stderr, "LPF bitmask in hex: %x\n", (c25lc_tx_lpf_i2c_new_data & 0x0f00) >> 8);
   fprintf(stderr, "PA and PTT state %d\n", (c25lc_tx_lpf_i2c_new_data & 0x3000) >> 12);
   fprintf(stderr, "c25lc_i2c_present: %d, c25lc_tx_lpf_i2c_new_data in hex: %x\n", c25lc_i2c_present, c25lc_tx_lpf_i2c_new_data); 
@@ -784,7 +788,7 @@ int main(int argc, char *argv[])
 #endif
   
   // Version and hardware info for debugging only!
-  fprintf(stderr, "Version 29032017: ");
+  fprintf(stderr, "Version 01042017: ");
 #ifdef CHARLY25AB_HAMLAB
   fprintf(stderr, "HAMlab Edition\n");
 #else
@@ -1845,10 +1849,22 @@ void *handler_keyer(void *arg)
 
     if(cw_mode == 0)
     {
+
+#ifdef CHARLY25AB
+      if(cw_memory[0] & 3)
+#else
       if(cw_memory[0] & 1)
+#endif
+
       {
         cw_on();
-        while(cw_memory[0] & 1)
+ 
+#ifdef CHARLY25AB
+        while(cw_memory[0] & 3)
+#else
+        while(cw_memory[1] & 1)
+#endif
+
         {
           usleep(1000);
           cw_memory[0] = cw_input();
