@@ -32,7 +32,7 @@
 #define CHARLY25AB 1
 
 // Define CHARLY25LC together with CHARLY25AB for Charly 25LC (4 band version) compatible builds
-#define CHARLY25LC 1
+// #define CHARLY25LC 1
 
 // Define CHARLY25LC_60M_BAND together with CHARLY25LC for 60m band usage together with the 40m LPF filter on a Charly 25LC board
 // #define CHARLY25LC_60M_BAND
