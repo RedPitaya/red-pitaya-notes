@@ -21,10 +21,11 @@
 03.02.2017 DG8MG: Added basic support for the BPFs on the Charly 25 RX BPF board based on the first prototype board.
 04.02.2017 DG8MG: Added support for RX1 and RX2 using the BPFs on the new Charly 25 RX BPF board (different layout and PCA9555 I/O routing).
 16.02.2017 DG8MG: Added backward compatibility for the Charly 25LC (4 band version) board.
-24.02.2017 DG8MG: Added 60m band usage together with the 40m LPF filter on a Charly 25LC board
-05.03.2017 DG8MG: Changed the behaviour of the RX/TX and PA relay switching routines to handle CW keying correctly
+24.02.2017 DG8MG: Added 60m band usage together with the 40m LPF filter on a Charly 25LC board.
+05.03.2017 DG8MG: Changed the behaviour of the RX/TX and PA relay switching routines to handle CW keying correctly.
 29.03.2017 DG8MG: Modified code to make it compatible with Red Pitaya's commit: https://github.com/RedPitaya/red-pitaya-notes/commit/eec0f694700ba94e58640817fbd072737ad2d7bf
-04.01.2017 DG8MG: Changed CW straight key behaviour for Charly 25 boards
+01.04.2017 DG8MG: Changed CW straight key behaviour for Charly 25 boards.
+06.04.2017 DG8MG: Added support for Antenna 1 and Antenna 2 switching on the Charly 25AB board.
 */
 
 // DG8MG
@@ -43,7 +44,7 @@
 // Define DEBUG for debug messages
 // # define DEBUG 1
 
-// Define DEBUG_ATT for ATT & PRE function call debug messages
+// Define DEBUG_ATT for ATT, PRE and ANT function call debug messages
 // #define DEBUG_ATT 1
 
 // Define DEBUG_CW for CW debug messages
@@ -412,16 +413,16 @@ bool c25lc_i2c_present = false;
 bool c25_rx1_bpf_i2c_present = false;
 bool c25_rx2_bpf_i2c_present = false;
 
-uint16_t c25_switch_att_pre(uint8_t frame_3, uint16_t c25_i2c_data)
+uint16_t c25_switch_att_pre_ant(uint8_t frame_3, uint16_t c25_i2c_data)
 {
-  static uint16_t c25_att_pre_i2c_data = 0;
+  static uint16_t c25_att_pre_ant_i2c_data = 0;
   
   /* Wipe bits that might get changed */
   /* first and second f are LPFs */
-  uint16_t c25_att_pre_i2c_new_data = c25_i2c_data & 0xfff0;
+  uint16_t c25_att_pre_ant_i2c_new_data = c25_i2c_data & 0xffb0;
   
   /* Attenuator */
-  c25_att_pre_i2c_new_data |= frame_3 & 3;  // C3: Bit 0-1 - Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
+  c25_att_pre_ant_i2c_new_data |= frame_3 & 3;  // C3: Bit 0-1 - Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
   
 /*
 DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
@@ -432,25 +433,28 @@ C3
 | | | | | +---------------- Preamp On/Off (0 = Off, 1 = On)
 | | | | +------------------ LT2208 Dither (0 = Off, 1 = On)  // DG8MG: On Charly 25AB hardware this bit is used for the switching of the second preamp
 | | | + ------------------- LT2208 Random (0= Off, 1 = On)
-| + + --------------------- Alex Rx Antenna (00 = none, 01 = Rx1, 10 = Rx2, 11 = XV)
+| + + --------------------- Alex Rx Antenna (00 = none, 01 = Rx1, 10 = Rx2, 11 = XV)  // DG8MG: On Charly 25AB hardware these bits are used for the switching of the antennas
 + ------------------------- Alex Rx out (0 = off, 1 = on). Set if Alex Rx Antenna > 0.
 */
 
   /* Activate preamp one and two as expected from the frontend software (f.e. PowerSDR Charly 25 / HAMlab Edition) */
-  c25_att_pre_i2c_new_data |= frame_3 & 12;  // C3: Bit 2 - Preamp On/Off (0 = Off, 1 = On), Bit 3 -  LT2208 Dither (0 = Off, 1 = On)
+  c25_att_pre_ant_i2c_new_data |= frame_3 & 12;  // C3: Bit 2 - Preamp 1 On/Off (0 = Off, 1 = On), Bit 3 - Preamp 2 On/Off (0 = Off, 1 = On)
   
-  if (c25_att_pre_i2c_new_data != c25_att_pre_i2c_data)
+  /* Activate antenna 1 or 2 as expected from the frontend software */
+  c25_att_pre_ant_i2c_new_data |= (frame_3 & 32) << 1;  // C3: Bit 5 and 6 - Antenna 1 - 3 (00 = Antenna 1, 01 = Antenna 2, 10 = Antenna 3, 11 = Transverter)
+  
+  if (c25_att_pre_ant_i2c_new_data != c25_att_pre_ant_i2c_data)
   {
-    c25_att_pre_i2c_data = c25_att_pre_i2c_new_data;
+    c25_att_pre_ant_i2c_data = c25_att_pre_ant_i2c_new_data;
     ioctl(i2c_fd, I2C_SLAVE, C25_ADDR);
-    i2c_write_addr_data16(i2c_fd, 0x02, c25_att_pre_i2c_data);
+    i2c_write_addr_data16(i2c_fd, 0x02, c25_att_pre_ant_i2c_data);
 
 #ifdef DEBUG_ATT
-    fprintf(stderr, "ATT & PRE bitmask in hex: %x\n", c25_att_pre_i2c_data & 0x000f);
+    fprintf(stderr, "ATT, PRE and ANT bitmask in hex: %x\n", c25_att_pre_ant_i2c_data & 0x004f);
 #endif  
   }
   
-  return c25_att_pre_i2c_data; 
+  return c25_att_pre_ant_i2c_data; 
 }
 
 uint16_t c25ab_switch_tx_lpf(bool mox, uint16_t c25ab_i2c_data, uint32_t c25_tx_freq)
@@ -788,7 +792,7 @@ int main(int argc, char *argv[])
 #endif
   
   // Version and hardware info for debugging only!
-  fprintf(stderr, "Version 01042017: ");
+  fprintf(stderr, "Version 06042017: ");
 #ifdef CHARLY25AB_HAMLAB
   fprintf(stderr, "HAMlab Edition\n");
 #else
@@ -1232,8 +1236,8 @@ void process_ep2(uint8_t *frame)
       }
 
 #ifdef CHARLY25AB
-      /* switch the attenuators and preamps on the Charly 25 board */
-      c25_i2c_data = c25_switch_att_pre(frame[3], c25_i2c_data);
+      /* switch the attenuators, preamps and antenna on the Charly 25 board */
+      c25_i2c_data = c25_switch_att_pre_ant(frame[3], c25_i2c_data);
       break;
 #endif
 
