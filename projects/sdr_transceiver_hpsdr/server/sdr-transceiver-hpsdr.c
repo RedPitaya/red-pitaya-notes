@@ -26,6 +26,7 @@
 29.03.2017 DG8MG: Modified code to make it compatible with Red Pitaya's commit: https://github.com/RedPitaya/red-pitaya-notes/commit/eec0f694700ba94e58640817fbd072737ad2d7bf
 01.04.2017 DG8MG: Changed CW straight key behaviour for Charly 25 boards.
 06.04.2017 DG8MG: Added support for Antenna 1 and Antenna 2 switching on the Charly 25AB board.
+13.04.2017 DG8MG: Changed the behaviour of the RX BPF boards detection routine due to the solved I2C multiplexer issues in the HAMlab.
 */
 
 // DG8MG
@@ -46,6 +47,9 @@
 
 // Define DEBUG_ATT for ATT, PRE and ANT function call debug messages
 // #define DEBUG_ATT 1
+
+// Define DEBUG_BPF for BPF debug messages
+// #define DEBUG_BPF 1
 
 // Define DEBUG_CW for CW debug messages
 // #define DEBUG_CW 1
@@ -639,13 +643,16 @@ ssize_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
     c25_rx_bpf_i2c_new_data |= 1 << 7;
   }
   
-#ifdef DEBUG 
-  fprintf(stderr, "BPF bitmask in hex: %x\n", c25_rx_bpf_i2c_new_data);
-#endif
+
   if (c25_rx_bpf_i2c_new_data != c25_rx_bpf_i2c_data)
   {
     c25_rx_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
     ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
+
+#ifdef DEBUG_BPF 
+    fprintf(stderr, "BPF frequency: %d - BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
+#endif
+
     return i2c_write_addr_data16(i2c_fd, 0x02, c25_rx_bpf_i2c_data);
   }      
 }
@@ -715,7 +722,6 @@ int main(int argc, char *argv[])
     // return EXIT_FAILURE;
   }
 
-#ifndef CHARLY25AB_HAMLAB 
   if(ioctl(i2c_fd, I2C_SLAVE, C25_RX1_BPF_ADDR) >= 0)
   {
     /* set all pins to low */
@@ -753,7 +759,6 @@ int main(int argc, char *argv[])
   {
     fprintf(stderr, "Charly 25 RX2 BPF - I2C ioctl error!\n");
   }
-#endif
 
 #ifndef CHARLY25AB_HAMLAB  // Charly 25 with audio codec present but not in a HAMlab
   if(ioctl(i2c_fd, I2C_SLAVE, C25_CODEC_ADDR) >= 0)
@@ -792,7 +797,7 @@ int main(int argc, char *argv[])
 #endif
   
   // Version and hardware info for debugging only!
-  fprintf(stderr, "Version 06042017: ");
+  fprintf(stderr, "Version 13042017: ");
 #ifdef CHARLY25AB_HAMLAB
   fprintf(stderr, "HAMlab Edition\n");
 #else
@@ -1744,6 +1749,11 @@ inline void cw_on()
   tx_mux[16] = 1;
   tx_mux[0] = 2;
   tx_mux_data = 1;
+  
+#ifdef DEBUG_CW
+  fprintf(stderr, "CW: PTT on ------\n");
+#endif
+
   if(i2c_codec && dac_level_data > 0)
   {
     dac_mux[16] = 1;
