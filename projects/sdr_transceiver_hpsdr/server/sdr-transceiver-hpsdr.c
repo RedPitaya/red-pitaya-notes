@@ -40,7 +40,7 @@
 // #define CHARLY25LC_60M_BAND
 
 // Define CHARLY25AB_HAMLAB together with CHARLY25AB for HAMlab specific builds
-#define CHARLY25AB_HAMLAB 1
+// #define CHARLY25AB_HAMLAB 1
 
 // Define DEBUG for debug messages
 // # define DEBUG 1
