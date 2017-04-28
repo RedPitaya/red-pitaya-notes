@@ -21,10 +21,14 @@
 03.02.2017 DG8MG: Added basic support for the BPFs on the Charly 25 RX BPF board based on the first prototype board.
 04.02.2017 DG8MG: Added support for RX1 and RX2 using the BPFs on the new Charly 25 RX BPF board (different layout and PCA9555 I/O routing).
 16.02.2017 DG8MG: Added backward compatibility for the Charly 25LC (4 band version) board.
-24.02.2017 DG8MG: Added 60m band usage together with the 40m LPF filter on a Charly 25LC board
-05.03.2017 DG8MG: Changed the behaviour of the RX/TX and PA relay switching routines to handle CW keying correctly
+24.02.2017 DG8MG: Added 60m band usage together with the 40m LPF filter on a Charly 25LC board.
+05.03.2017 DG8MG: Changed the behaviour of the RX/TX and PA relay switching routines to handle CW keying correctly.
 29.03.2017 DG8MG: Modified code to make it compatible with Red Pitaya's commit: https://github.com/RedPitaya/red-pitaya-notes/commit/eec0f694700ba94e58640817fbd072737ad2d7bf
-04.01.2017 DG8MG: Changed CW straight key behaviour for Charly 25 boards
+01.04.2017 DG8MG: Changed CW straight key behaviour for Charly 25 boards.
+06.04.2017 DG8MG: Added support for Antenna 1 and Antenna 2 switching on the Charly 25AB board.
+13.04.2017 DG8MG: Changed the behaviour of the RX BPF boards detection routine due to the solved I2C multiplexer issues in the HAMlab.
+25.04.2017 DG8MG: Added HAMlab audio codec support
+26.04.2017 DG8MG: Added hardware detection routine for Charly 25 boards in and outside of a HAMlab
 */
 
 // DG8MG
@@ -37,14 +41,14 @@
 // Define CHARLY25LC_60M_BAND together with CHARLY25LC for 60m band usage together with the 40m LPF filter on a Charly 25LC board
 // #define CHARLY25LC_60M_BAND
 
-// Define CHARLY25AB_HAMLAB together with CHARLY25AB for HAMlab specific builds
-#define CHARLY25AB_HAMLAB 1
-
 // Define DEBUG for debug messages
 // # define DEBUG 1
 
-// Define DEBUG_ATT for ATT & PRE function call debug messages
+// Define DEBUG_ATT for ATT, PRE and ANT function call debug messages
 // #define DEBUG_ATT 1
+
+// Define DEBUG_BPF for BPF debug messages
+// #define DEBUG_BPF 1
 
 // Define DEBUG_CW for CW debug messages
 // #define DEBUG_CW 1
@@ -93,14 +97,12 @@
 #endif
 
 #ifdef CHARLY25AB
-#ifdef CHARLY25AB_HAMLAB
-#define C25_I2C_DEVICE "/dev/i2c-1"
-#else
 #define C25_I2C_DEVICE "/dev/i2c-0"
-#endif
+#define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
+#define HAMLAB_AUDIO_I2C_DEVICE "/dev/i2c-6"
 
 /* I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0 */
-const uint8_t C25_CODEC_ADDR = 0x1A;
+const uint8_t AUDIO_CODEC_ADDR = 0x1A;
 
 /* I2C address of the Charly 25 trx frontend */
 const uint8_t C25_ADDR = 0x20;
@@ -404,24 +406,199 @@ void icom_write()
 #endif
 
 #ifdef CHARLY25AB
-/* I2C handling Charly 25AB */
+/* I2C handling Charly 25 */
 int i2c_fd;
+
+/* I2C handling HAMlab audio codec */
+int hamlab_audio_i2c_fd;
 
 bool c25ab_i2c_present = false;
 bool c25lc_i2c_present = false;
 bool c25_rx1_bpf_i2c_present = false;
 bool c25_rx2_bpf_i2c_present = false;
+bool hamlab_i2c_present = false;
 
-uint16_t c25_switch_att_pre(uint8_t frame_3, uint16_t c25_i2c_data)
+void c25_detect_hardware(void)
 {
-  static uint16_t c25_att_pre_i2c_data = 0;
+  /* Check if a HAMlab is present */
+  if((i2c_fd = open(C25_HAMLAB_I2C_DEVICE, O_RDWR)) >= 0)
+  {
+    /* HAMlab is present */
+    hamlab_i2c_present = true;
+  }   
+  else 
+  {
+    /* Red Pitaya is running stand-alone */
+    i2c_fd = open(C25_I2C_DEVICE, O_RDWR);
+  }
+  
+  if (i2c_fd >= 0)
+  {
+    if(ioctl(i2c_fd, I2C_SLAVE_FORCE, C25_ADDR) >= 0)
+    {
+      /* set all pins to low and check if a Charly 25 TRX board is present */
+      if(i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) > 0)
+      {
+        /* Charly 25 TRX board is present */
+#ifdef CHARLY25LC
+        c25lc_i2c_present = true;
+#else
+        c25ab_i2c_present = true;
+#endif
+        /* configure all pins as output */
+        i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
+      }
+      else
+      {
+        fprintf(stderr, "Charly 25 TRX - I2C write error!\n");
+      }
+    }
+    else
+    {
+      fprintf(stderr, "Charly 25 TRX - I2C ioctl error!\n");
+    }
+  }
+  
+  /* Detect RX BPF boards */
+  if(ioctl(i2c_fd, I2C_SLAVE, C25_RX1_BPF_ADDR) >= 0)
+  {
+    /* set all pins to low */
+    if(i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
+    {
+      c25_rx1_bpf_i2c_present = true;
+      /* configure all pins as output */
+      i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
+    }
+    else
+    {
+      fprintf(stderr, "Charly 25 RX1 BPF - I2C write error!\n");
+    }
+  }
+  else
+  {
+    fprintf(stderr, "Charly 25 RX1 BPF - I2C ioctl error!\n");
+  }
+
+  if(ioctl(i2c_fd, I2C_SLAVE, C25_RX2_BPF_ADDR) >= 0)
+  {
+    /* set all pins to low */
+    if(i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
+    {
+      c25_rx2_bpf_i2c_present = true;
+      /* configure all pins as output */
+      i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
+    }
+    else
+    {
+      fprintf(stderr, "Charly 25 RX2 BPF - I2C write error!\n");
+    }
+  }
+  else
+  {
+    fprintf(stderr, "Charly 25 RX2 BPF - I2C ioctl error!\n");
+  }
+  
+  /* Detect audio codec board */
+  /* Check if a HAMlab audio codec is present */
+  if (hamlab_i2c_present)
+  {
+    if (hamlab_audio_i2c_fd = open(HAMLAB_AUDIO_I2C_DEVICE, O_RDWR) >= 0)
+    {    
+      if (ioctl(hamlab_audio_i2c_fd, I2C_SLAVE_FORCE, AUDIO_CODEC_ADDR) >= 0)
+      {
+        /* reset */
+        if (i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x1e, 0x00) >= 0)
+        {
+          i2c_codec = 1;
+          /* set power down register */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0c, 0x51);
+          /* reset activate register */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x12, 0x00);
+          /* set volume to -10 dB */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x04, 0x6f);
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x06, 0x6f);
+          /* set analog audio path register */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x08, 0x14);
+          /* set digital audio path register */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0a, 0x00);
+          /* set format register */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0e, 0x42);
+          /* set activate register */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x12, 0x01);
+          /* set power down register */
+          i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0c, 0x41);
+        }
+        else
+        {
+          fprintf(stderr, "HAMlab AUDIO CODEC - I2C write error!\n");
+        }
+      }
+      else
+      {
+        fprintf(stderr, "HAMlab AUDIO CODEC - I2C ioctl error!\n");
+      }
+    }
+    else
+    {
+      fprintf(stderr, "HAMlab AUDIO CODEC - I2C open error!\n");
+    }
+  }
+  else if (ioctl(i2c_fd, I2C_SLAVE, AUDIO_CODEC_ADDR) >= 0)
+  {
+    /* reset */
+    /* Check if a Charly 25 stand-alone audio codec is present */
+    if(i2c_write_addr_data8(i2c_fd, 0x1e, 0x00) >= 0)
+    {
+      i2c_codec = 1;
+      /* set power down register */
+      i2c_write_addr_data8(i2c_fd, 0x0c, 0x51);
+      /* reset activate register */
+      i2c_write_addr_data8(i2c_fd, 0x12, 0x00);
+      /* set volume to -10 dB */
+      i2c_write_addr_data8(i2c_fd, 0x04, 0x6f);
+      i2c_write_addr_data8(i2c_fd, 0x06, 0x6f);
+      /* set analog audio path register */
+      i2c_write_addr_data8(i2c_fd, 0x08, 0x14);
+      /* set digital audio path register */
+      i2c_write_addr_data8(i2c_fd, 0x0a, 0x00);
+      /* set format register */
+      i2c_write_addr_data8(i2c_fd, 0x0e, 0x42);
+      /* set activate register */
+      i2c_write_addr_data8(i2c_fd, 0x12, 0x01);
+      /* set power down register */
+      i2c_write_addr_data8(i2c_fd, 0x0c, 0x41);
+    }
+    else
+    {
+      fprintf(stderr, "Charly 25 AUDIO CODEC - I2C write error!\n");
+    }
+  }
+  else
+  {
+    fprintf(stderr, "Charly 25 AUDIO CODEC - I2C ioctl error!\n");
+  }
+  
+  // Version and hardware info for debugging only!
+  fprintf(stderr, "Version 26042017 with the following hardware is present:\n");
+ 
+  if (hamlab_i2c_present) fprintf(stderr, "- HAMlab\n");
+  if (c25ab_i2c_present) fprintf(stderr, "- Charly 25AB TRX\n");
+  if (c25lc_i2c_present) fprintf(stderr, "- Charly 25LC TRX\n");
+  if (c25_rx1_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 1 BPF\n");
+  if (c25_rx2_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 2 BPF\n");
+  if (i2c_codec) fprintf(stderr, "- AUDIO CODEC\n");
+}
+
+uint16_t c25_switch_att_pre_ant(uint8_t frame_3, uint16_t c25_i2c_data)
+{
+  static uint16_t c25_att_pre_ant_i2c_data = 0;
   
   /* Wipe bits that might get changed */
   /* first and second f are LPFs */
-  uint16_t c25_att_pre_i2c_new_data = c25_i2c_data & 0xfff0;
+  uint16_t c25_att_pre_ant_i2c_new_data = c25_i2c_data & 0xffb0;
   
   /* Attenuator */
-  c25_att_pre_i2c_new_data |= frame_3 & 3;  // C3: Bit 0-1 - Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
+  c25_att_pre_ant_i2c_new_data |= frame_3 & 3;  // C3: Bit 0-1 - Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
   
 /*
 DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
@@ -432,25 +609,28 @@ C3
 | | | | | +---------------- Preamp On/Off (0 = Off, 1 = On)
 | | | | +------------------ LT2208 Dither (0 = Off, 1 = On)  // DG8MG: On Charly 25AB hardware this bit is used for the switching of the second preamp
 | | | + ------------------- LT2208 Random (0= Off, 1 = On)
-| + + --------------------- Alex Rx Antenna (00 = none, 01 = Rx1, 10 = Rx2, 11 = XV)
+| + + --------------------- Alex Rx Antenna (00 = none, 01 = Rx1, 10 = Rx2, 11 = XV)  // DG8MG: On Charly 25AB hardware these bits are used for the switching of the antennas
 + ------------------------- Alex Rx out (0 = off, 1 = on). Set if Alex Rx Antenna > 0.
 */
 
   /* Activate preamp one and two as expected from the frontend software (f.e. PowerSDR Charly 25 / HAMlab Edition) */
-  c25_att_pre_i2c_new_data |= frame_3 & 12;  // C3: Bit 2 - Preamp On/Off (0 = Off, 1 = On), Bit 3 -  LT2208 Dither (0 = Off, 1 = On)
+  c25_att_pre_ant_i2c_new_data |= frame_3 & 12;  // C3: Bit 2 - Preamp 1 On/Off (0 = Off, 1 = On), Bit 3 - Preamp 2 On/Off (0 = Off, 1 = On)
   
-  if (c25_att_pre_i2c_new_data != c25_att_pre_i2c_data)
+  /* Activate antenna 1 or 2 as expected from the frontend software */
+  c25_att_pre_ant_i2c_new_data |= (frame_3 & 32) << 1;  // C3: Bit 5 and 6 - Antenna 1 - 3 (00 = Antenna 1, 01 = Antenna 2, 10 = Antenna 3, 11 = Transverter)
+  
+  if (c25_att_pre_ant_i2c_new_data != c25_att_pre_ant_i2c_data)
   {
-    c25_att_pre_i2c_data = c25_att_pre_i2c_new_data;
+    c25_att_pre_ant_i2c_data = c25_att_pre_ant_i2c_new_data;
     ioctl(i2c_fd, I2C_SLAVE, C25_ADDR);
-    i2c_write_addr_data16(i2c_fd, 0x02, c25_att_pre_i2c_data);
+    i2c_write_addr_data16(i2c_fd, 0x02, c25_att_pre_ant_i2c_data);
 
 #ifdef DEBUG_ATT
-    fprintf(stderr, "ATT & PRE bitmask in hex: %x\n", c25_att_pre_i2c_data & 0x000f);
+    fprintf(stderr, "ATT, PRE and ANT bitmask in hex: %x\n", c25_att_pre_ant_i2c_data & 0x004f);
 #endif  
   }
   
-  return c25_att_pre_i2c_data; 
+  return c25_att_pre_ant_i2c_data; 
 }
 
 uint16_t c25ab_switch_tx_lpf(bool mox, uint16_t c25ab_i2c_data, uint32_t c25_tx_freq)
@@ -635,13 +815,15 @@ ssize_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
     c25_rx_bpf_i2c_new_data |= 1 << 7;
   }
   
-#ifdef DEBUG 
-  fprintf(stderr, "BPF bitmask in hex: %x\n", c25_rx_bpf_i2c_new_data);
-#endif
   if (c25_rx_bpf_i2c_new_data != c25_rx_bpf_i2c_data)
   {
     c25_rx_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
     ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
+
+#ifdef DEBUG_BPF 
+    fprintf(stderr, "BPF frequency: %d - BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
+#endif
+
     return i2c_write_addr_data16(i2c_fd, 0x02, c25_rx_bpf_i2c_data);
   }      
 }
@@ -678,127 +860,8 @@ int main(int argc, char *argv[])
   }
 
 #ifdef CHARLY25AB
-  if((i2c_fd = open(C25_I2C_DEVICE, O_RDWR)) >= 0)
-  {    
-    if(ioctl(i2c_fd, I2C_SLAVE_FORCE, C25_ADDR) >= 0)
-    {
-      /* set all pins to low */
-      if(i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) > 0)
-      {
-
-#ifdef CHARLY25LC
-        c25lc_i2c_present = true;
-#else
-        c25ab_i2c_present = true;
-#endif
-
-        /* configure all pins as output */
-        i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
-      }
-      else
-      {
-        fprintf(stderr, "Charly 25 TRX - I2C write error!\n");
-      }
-    }
-    else
-    {
-      fprintf(stderr, "Charly 25 TRX - I2C ioctl error!\n");
-    }
-  }
-  else
-  {
-    fprintf(stderr, "Charly 25 TRX - I2C open error!\n");
-    // return EXIT_FAILURE;
-  }
-
-#ifndef CHARLY25AB_HAMLAB 
-  if(ioctl(i2c_fd, I2C_SLAVE, C25_RX1_BPF_ADDR) >= 0)
-  {
-    /* set all pins to low */
-    if(i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
-    {
-      c25_rx1_bpf_i2c_present = true;
-      /* configure all pins as output */
-      i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
-    }
-    else
-    {
-      fprintf(stderr, "Charly 25 RX1 BPF - I2C write error!\n");
-    }
-  }
-  else
-  {
-    fprintf(stderr, "Charly 25 RX1 BPF - I2C ioctl error!\n");
-  }
-
-  if(ioctl(i2c_fd, I2C_SLAVE, C25_RX2_BPF_ADDR) >= 0)
-  {
-    /* set all pins to low */
-    if(i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
-    {
-      c25_rx2_bpf_i2c_present = true;
-      /* configure all pins as output */
-      i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
-    }
-    else
-    {
-      fprintf(stderr, "Charly 25 RX2 BPF - I2C write error!\n");
-    }
-  }
-  else
-  {
-    fprintf(stderr, "Charly 25 RX2 BPF - I2C ioctl error!\n");
-  }
-#endif
-
-#ifndef CHARLY25AB_HAMLAB  // Charly 25 with audio codec present but not in a HAMlab
-  if(ioctl(i2c_fd, I2C_SLAVE, C25_CODEC_ADDR) >= 0)
-  {
-    /* reset */
-    if(i2c_write_addr_data8(i2c_fd, 0x1e, 0x00) >= 0)
-    {
-      i2c_codec = 1;
-      /* set power down register */
-      i2c_write_addr_data8(i2c_fd, 0x0c, 0x51);
-      /* reset activate register */
-      i2c_write_addr_data8(i2c_fd, 0x12, 0x00);
-      /* set volume to -10 dB */
-      i2c_write_addr_data8(i2c_fd, 0x04, 0x6f);
-      i2c_write_addr_data8(i2c_fd, 0x06, 0x6f);
-      /* set analog audio path register */
-      i2c_write_addr_data8(i2c_fd, 0x08, 0x14);
-      /* set digital audio path register */
-      i2c_write_addr_data8(i2c_fd, 0x0a, 0x00);
-      /* set format register */
-      i2c_write_addr_data8(i2c_fd, 0x0e, 0x42);
-      /* set activate register */
-      i2c_write_addr_data8(i2c_fd, 0x12, 0x01);
-      /* set power down register */
-      i2c_write_addr_data8(i2c_fd, 0x0c, 0x41);
-    }
-    else
-    {
-      fprintf(stderr, "Charly 25 AUDIO CODEC - I2C write error!\n");
-    }
-  }
-  else
-  {
-    fprintf(stderr, "Charly 25 AUDIO CODEC - I2C ioctl error!\n");
-  }
-#endif
-  
-  // Version and hardware info for debugging only!
-  fprintf(stderr, "Version 01042017: ");
-#ifdef CHARLY25AB_HAMLAB
-  fprintf(stderr, "HAMlab Edition\n");
-#else
-  fprintf(stderr, "Charly 25 Edition\n");
-#endif
-  if(c25ab_i2c_present) fprintf(stderr, "Hardware: Charly 25AB present\n");
-  if(c25lc_i2c_present) fprintf(stderr, "Hardware: Charly 25LC present\n");
-  if(c25_rx1_bpf_i2c_present) fprintf(stderr, "Hardware: Charly 25 RX 1 BPF present\n");
-  if(c25_rx2_bpf_i2c_present) fprintf(stderr, "Hardware: Charly 25 RX 2 BPF present\n");
-  if(i2c_codec) fprintf(stderr, "Hardware: Charly 25 AUDIO CODEC present\n");
+/* Detect the present Charly 25 and HAMlab hardware */
+c25_detect_hardware();
 #endif
 
 #ifndef CHARLY25AB
@@ -1232,8 +1295,8 @@ void process_ep2(uint8_t *frame)
       }
 
 #ifdef CHARLY25AB
-      /* switch the attenuators and preamps on the Charly 25 board */
-      c25_i2c_data = c25_switch_att_pre(frame[3], c25_i2c_data);
+      /* switch the attenuators, preamps and antenna on the Charly 25 board */
+      c25_i2c_data = c25_switch_att_pre_ant(frame[3], c25_i2c_data);
       break;
 #endif
 
@@ -1486,7 +1549,7 @@ void process_ep2(uint8_t *frame)
         {
           i2c_boost_data = boost;
 #ifdef CHARLY25AB
-          ioctl(i2c_fd, I2C_SLAVE, C25_CODEC_ADDR);
+          ioctl(i2c_fd, I2C_SLAVE, AUDIO_CODEC_ADDR);
 #else
           ioctl(i2c_fd, I2C_SLAVE, ADDR_CODEC);
 #endif
@@ -1740,6 +1803,11 @@ inline void cw_on()
   tx_mux[16] = 1;
   tx_mux[0] = 2;
   tx_mux_data = 1;
+  
+#ifdef DEBUG_CW
+  fprintf(stderr, "CW: PTT on ------\n");
+#endif
+
   if(i2c_codec && dac_level_data > 0)
   {
     dac_mux[16] = 1;
