@@ -502,7 +502,8 @@ void c25_detect_hardware(void)
   /* Check if a HAMlab audio codec is present */
   if (hamlab_i2c_present)
   {
-    if (hamlab_audio_i2c_fd = open(HAMLAB_AUDIO_I2C_DEVICE, O_RDWR) >= 0)
+    hamlab_audio_i2c_fd = open(HAMLAB_AUDIO_I2C_DEVICE, O_RDWR);
+    if (hamlab_audio_i2c_fd >= 0)
     {    
       if (ioctl(hamlab_audio_i2c_fd, I2C_SLAVE_FORCE, AUDIO_CODEC_ADDR) >= 0)
       {
