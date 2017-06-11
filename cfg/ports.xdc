@@ -150,6 +150,7 @@ set_property SLEW SLOW [get_ports {exp_p_tri_io[*]}]
 set_property SLEW SLOW [get_ports {exp_n_tri_io[*]}]
 set_property DRIVE 8 [get_ports {exp_p_tri_io[*]}]
 set_property DRIVE 8 [get_ports {exp_n_tri_io[*]}]
+set_property PULLUP TRUE [get_ports {exp_n_tri_io[0]}]
 set_property PULLUP TRUE [get_ports {exp_n_tri_io[1]}]
 set_property PULLUP TRUE [get_ports {exp_n_tri_io[2]}]
 
