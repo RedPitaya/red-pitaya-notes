@@ -27,8 +27,9 @@
 01.04.2017 DG8MG: Changed CW straight key behaviour for Charly 25 boards.
 06.04.2017 DG8MG: Added support for Antenna 1 and Antenna 2 switching on the Charly 25AB board.
 13.04.2017 DG8MG: Changed the behaviour of the RX BPF boards detection routine due to the solved I2C multiplexer issues in the HAMlab.
-25.04.2017 DG8MG: Added HAMlab audio codec support
-26.04.2017 DG8MG: Added hardware detection routine for Charly 25 boards in and outside of a HAMlab
+25.04.2017 DG8MG: Added HAMlab audio codec support.
+26.04.2017 DG8MG: Added hardware detection routine for Charly 25 boards in and outside of a HAMlab.
+11.06.2017 DG8MG: Extended the hardware detection routine, it's now reading the board id's and transfers them to the frontend software.
 */
 
 // DG8MG
@@ -112,6 +113,9 @@ const uint8_t C25_RX1_BPF_ADDR = 0x21;
 
 /* I2C address of the second Charly 25 receiver BPF board */
 const uint8_t C25_RX2_BPF_ADDR = 0x22;
+
+/* I2C address of the Charly 25 TRX board ID chip */
+const uint8_t C25_TRX_ID_ADDR = 0x1A;
 
 /* C25 filter frequencies */
 const uint32_t C25_6M_LOW_FREQ = 49995000;
@@ -412,24 +416,50 @@ int i2c_fd;
 /* I2C handling HAMlab audio codec */
 int hamlab_audio_i2c_fd;
 
-bool c25ab_i2c_present = false;
-bool c25lc_i2c_present = false;
 bool c25_rx1_bpf_i2c_present = false;
 bool c25_rx2_bpf_i2c_present = false;
-bool hamlab_i2c_present = false;
+bool charly25_present = false;
+bool hamlab_present = false;
+
+/* Charly 25 TRX board ID */
+uint8_t C25_TRX_ID = 0;
 
 void c25_detect_hardware(void)
 {
+  uint8_t input_register[1];
+  input_register[0] = 0;
+
   /* Check if a HAMlab is present */
-  if((i2c_fd = open(C25_HAMLAB_I2C_DEVICE, O_RDWR)) >= 0)
+  if ((i2c_fd = open(C25_HAMLAB_I2C_DEVICE, O_RDWR)) >= 0)
   {
     /* HAMlab is present */
-    hamlab_i2c_present = true;
-  }   
-  else 
+    hamlab_present = true;    
+  }
+  /* Check if a Charly 25 is running stand-alone */
+  else if ((i2c_fd = open(C25_I2C_DEVICE, O_RDWR)) >= 0)
   {
-    /* Red Pitaya is running stand-alone */
-    i2c_fd = open(C25_I2C_DEVICE, O_RDWR);
+    /* Charly 25 TRX board is present */
+    charly25_present = true; 
+  }
+  
+  fprintf(stderr, "i2c_fd: %u\n", i2c_fd);
+  
+  if (ioctl(i2c_fd, I2C_SLAVE, C25_TRX_ID_ADDR) >= 0)
+  {       
+    // uninvert input - default is 0xf0
+    i2c_write_addr_data8(i2c_fd, 0x02, 0x00);
+	 
+    // set pins for input
+    i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
+
+    // address the input port register 
+    i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
+    
+    // read the Charly 25 TRX board ID
+	if (read(i2c_fd, input_register, 1) == 1)
+    {
+      C25_TRX_ID = input_register[0];              
+    }
   }
   
   if (i2c_fd >= 0)
@@ -439,12 +469,7 @@ void c25_detect_hardware(void)
       /* set all pins to low and check if a Charly 25 TRX board is present */
       if(i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) > 0)
       {
-        /* Charly 25 TRX board is present */
-#ifdef CHARLY25LC
-        c25lc_i2c_present = true;
-#else
-        c25ab_i2c_present = true;
-#endif
+
         /* configure all pins as output */
         i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
       }
@@ -500,7 +525,7 @@ void c25_detect_hardware(void)
   
   /* Detect audio codec board */
   /* Check if a HAMlab audio codec is present */
-  if (hamlab_i2c_present)
+  if (hamlab_present)
   {
     hamlab_audio_i2c_fd = open(HAMLAB_AUDIO_I2C_DEVICE, O_RDWR);
     if (hamlab_audio_i2c_fd >= 0)
@@ -580,11 +605,11 @@ void c25_detect_hardware(void)
   }
   
   // Version and hardware info for debugging only!
-  fprintf(stderr, "Version 26042017 with the following hardware is present:\n");
- 
-  if (hamlab_i2c_present) fprintf(stderr, "- HAMlab\n");
-  if (c25ab_i2c_present) fprintf(stderr, "- Charly 25AB TRX\n");
-  if (c25lc_i2c_present) fprintf(stderr, "- Charly 25LC TRX\n");
+  fprintf(stderr, "Version 11062017 with the following hardware is present:\n");
+
+  if (charly25_present) fprintf(stderr, "- Charly 25\n");  
+  if (hamlab_present) fprintf(stderr, "- HAMlab\n");
+  if (C25_TRX_ID > 0) fprintf(stderr, "- Charly 25 TRX board ID: %u\n", C25_TRX_ID);
   if (c25_rx1_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 1 BPF\n");
   if (c25_rx2_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 2 BPF\n");
   if (i2c_codec) fprintf(stderr, "- AUDIO CODEC\n");
@@ -687,7 +712,7 @@ uint16_t c25ab_switch_tx_lpf(bool mox, uint16_t c25ab_i2c_data, uint32_t c25_tx_
 #ifdef DEBUG_LPF
   fprintf(stderr, "LPF bitmask in hex: %x\n", (c25ab_tx_lpf_i2c_new_data & 0x7f00) >> 8);
   fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_new_data & 0x0030) >> 4);
-  fprintf(stderr, "c25ab_i2c_present: %d, c25ab_tx_lpf_i2c_new_data in hex: %x\n", c25ab_i2c_present, c25ab_tx_lpf_i2c_new_data); 
+  fprintf(stderr, "c25ab_tx_lpf_i2c_new_data in hex: %x\n", c25ab_tx_lpf_i2c_new_data); 
 #endif  
 
 #ifdef DEBUG_PA
@@ -742,7 +767,7 @@ uint16_t c25lc_switch_tx_lpf(bool mox, uint16_t c25lc_i2c_data, uint32_t c25_tx_
 #ifdef DEBUG_LPF
   fprintf(stderr, "LPF bitmask in hex: %x\n", (c25lc_tx_lpf_i2c_new_data & 0x0f00) >> 8);
   fprintf(stderr, "PA and PTT state %d\n", (c25lc_tx_lpf_i2c_new_data & 0x3000) >> 12);
-  fprintf(stderr, "c25lc_i2c_present: %d, c25lc_tx_lpf_i2c_new_data in hex: %x\n", c25lc_i2c_present, c25lc_tx_lpf_i2c_new_data); 
+  fprintf(stderr, "c25lc_tx_lpf_i2c_new_data in hex: %x\n", c25lc_tx_lpf_i2c_new_data); 
 #endif  
 
   if (c25lc_tx_lpf_i2c_new_data != c25lc_tx_lpf_i2c_data)
@@ -1350,14 +1375,13 @@ void process_ep2(uint8_t *frame)
       if(c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
       *tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
 
-      if (c25ab_i2c_present)
-      {
-        c25_i2c_data = c25ab_switch_tx_lpf(mox, c25_i2c_data, c25_tx_freq);
-      }
-      
-      if (c25lc_i2c_present)
+      if (C25_TRX_ID >= 128 && C25_TRX_ID <= 129)
       {
         c25_i2c_data = c25lc_switch_tx_lpf(mox, c25_i2c_data, c25_tx_freq);
+      }
+      else if (C25_TRX_ID == 130)
+      {
+        c25_i2c_data = c25ab_switch_tx_lpf(mox, c25_i2c_data, c25_tx_freq);
       }
       
       break;
@@ -1650,6 +1674,18 @@ void *handler_ep6(void *arg)
     127, 127, 127, 24, 0, 0, 0, 0,
     127, 127, 127, 32, 66, 66, 66, 66
   };
+
+#ifdef CHARLY25AB
+  // C2 – Mercury (receiver) software serial number (0 to 255) - set to 33 by default
+  if (c25_rx1_bpf_i2c_present) header[5] = 146;
+  if (c25_rx2_bpf_i2c_present) header[5] = 147;
+
+  // C3 - Penelope (transmitter) software serial number (0 to 255) – set to 17 by default  
+  header[6] = C25_TRX_ID;
+  
+  // C4 - Ozy/Magister or Metis (Ethernet interface) or Hermes software serial number (0 to 255) - set to 21 by default
+  if (i2c_codec) header[7] = 128;
+#endif
 
   memset(audio, 0, sizeof(audio));
   memset(iovec, 0, sizeof(iovec));
