@@ -104,7 +104,7 @@
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
 #define HAMLAB_AUDIO_I2C_DEVICE "/dev/i2c-6"
 
-// I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0 
+								  // I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0 
 const uint8_t AUDIO_CODEC_ADDR = 0x1A;
 
 // I2C address of the Charly 25 trx frontend 
@@ -455,52 +455,57 @@ void c25_detect_hardware(void)
 
 	if (i2c_fd >= 0)
 	{
-		// Check if an ID chip is present on the Charly 25 TRX board
 		if (ioctl(i2c_fd, I2C_SLAVE, C25_TRX_ID_ADDR) >= 0)
 		{
-			// uninvert input - default is 0xf0
-			i2c_write_addr_data8(i2c_fd, 0x02, 0x00);
-
-			// set pins for input
-			i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
-
-			// address the input port register 
-			i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
-
-			// read the Charly 25 TRX board ID and model
-			c25lc_trx_present = false;
-			c25ab_trx_present = false;
-
-			if (read(i2c_fd, input_register, 1) == 1)
+			// uninvert input - default is 0xf0 and
+			// check if an ID chip is present on the Charly 25 TRX board
+			if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) >= 0)
 			{
-				C25_TRX_ID = input_register[0];
+				// set pins for input
+				i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
 
-				if (C25_TRX_ID >= 128 && C25_TRX_ID <= 129)
+				// address the input port register 
+				i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
+
+				// read the Charly 25 TRX board ID and model
+				c25lc_trx_present = false;
+				c25ab_trx_present = false;
+
+				if (read(i2c_fd, input_register, 1) == 1)
 				{
-					c25lc_trx_present = true;
-				}
-				else if (C25_TRX_ID == 130)
-				{
-					c25ab_trx_present = true;
+					C25_TRX_ID = input_register[0];
+
+					if (C25_TRX_ID >= 128 && C25_TRX_ID <= 129)
+					{
+						c25lc_trx_present = true;
+					}
+					else if (C25_TRX_ID == 130)
+					{
+						c25ab_trx_present = true;
+					}
 				}
 			}
-		}
-		// If no ID chip is present set the board model via pre-processor #define
-		else
-		{
-			fprintf(stderr, "No ID chip on the Charly 25 TRX board found!\n");
+			// If no ID chip is present set the board model via pre-processor #define
+			else
+			{
+				fprintf(stderr, "No ID chip on the Charly 25 TRX board found!\n");
 
 #ifdef CHARLY25LC
-			c25lc_trx_present = true;
+				c25lc_trx_present = true;
 #else
-			c25ab_trx_present = true;
+				c25ab_trx_present = true;
 #endif
+			}
+		}
+		else
+		{
+			fprintf(stderr, "Charly 25 TRX ID chip - I2C ioctl error!\n");
 		}
 
 		if (ioctl(i2c_fd, I2C_SLAVE_FORCE, C25_ADDR) >= 0)
 		{
 			// set all pins to low and check if a Charly 25 TRX board is present
-			if (i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) > 0)
+			if (i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
 			{
 				// If no HAMlab is present
 				if (!hamlab_present)
@@ -646,7 +651,7 @@ void c25_detect_hardware(void)
 	}
 
 	// Version and hardware info for debugging only!
-	fprintf(stderr, "Version 14062017 with the following hardware is present:\n");
+	fprintf(stderr, "Version 24062017 with the following hardware is present:\n");
 
 	if (charly25_present) fprintf(stderr, "- Charly 25 with ");
 	if (hamlab_present) fprintf(stderr, "- HAMlab with ");
@@ -669,8 +674,8 @@ uint16_t c25_switch_att_pre_ant(uint8_t frame_3)
 	c25_att_pre_ant_i2c_new_data |= frame_3 & 3;  // C3: Bit 0-1 - Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
 
 	/*
- 	DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
- 	C3
+	DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
+	C3
 	0 0 0 0 0 0 0 0
 	| | | | | | | |
 	| | | | | | + +------------ Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
