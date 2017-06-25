@@ -100,6 +100,8 @@
 #endif
 
 #ifdef CHARLY25AB
+#define SDR_APP_VERSION "20170625"
+
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
 #define HAMLAB_AUDIO_I2C_DEVICE "/dev/i2c-6"
@@ -646,7 +648,7 @@ void c25_detect_hardware(void)
 	}
 
 	// Version and hardware info for debugging only!
-	fprintf(stderr, "Version 14062017 with the following hardware is present:\n");
+	fprintf(stderr, "Version %s with the following hardware is present:\n", SDR_APP_VERSION);
 
 	if (charly25_present) fprintf(stderr, "- Charly 25 with ");
 	if (hamlab_present) fprintf(stderr, "- HAMlab with ");
