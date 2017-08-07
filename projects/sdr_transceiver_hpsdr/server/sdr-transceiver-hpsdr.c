@@ -32,6 +32,7 @@
 11.06.2017 DG8MG: Extended the hardware detection routine, it's now reading the board id's and transfers them to the frontend software.
 12.06.2017 DG8MG: Changed the CW keyer handling for Charly 25 boards due to sporadic PA blocking issues when starting CW.
 14.06.2017 DG8MG: Extended the hardware detection routine, it's now also working with Charly 25 boards without ID chips.
+06.08.2017 DG8MG: Added TCP protocol support for the transmission between the Red Pitaya device and the frontend software.
 */
 
 // DG8MG
@@ -43,6 +44,9 @@
 
 // Define CHARLY25LC_60M_BAND together with CHARLY25LC for 60m band usage together with the 40m LPF filter on a Charly 25LC board
 // #define CHARLY25LC_60M_BAND
+
+// Define CHARLY25_TCP together with CHARLY25AB to use TCP as protocol between the Red Pitaya device and the frontend software
+#define CHARLY25_TCP
 
 // Define DEBUG for debug messages
 // #define DEBUG 1
@@ -61,6 +65,9 @@
 
 // Define DEBUG_PA for PA & PTT debug messages
 // #define DEBUG_PA 1
+
+// Define DEBUG_PROT for HPSDR protocol debug messages
+// #define DEBUG_PROT 1
 // DG8MG
 
 #include <stdio.h>
@@ -85,8 +92,7 @@
 
 
 #define I2C_SLAVE       0x0703 /* Use this slave address */
-#define I2C_SLAVE_FORCE 0x0706 /* Use this slave address, even if it
-								  is already in use by a driver! */
+#define I2C_SLAVE_FORCE 0x0706 /* Use this slave address, even if it is already in use by a driver! */
 
 #ifndef CHARLY25AB
 #define ADDR_PENE 0x20 /* PCA9555 address 0 */
@@ -100,11 +106,13 @@
 #endif
 
 #ifdef CHARLY25AB
+#define SDR_APP_VERSION "20170806"
+
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
 #define HAMLAB_AUDIO_I2C_DEVICE "/dev/i2c-6"
 
-								  // I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0 
+// I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0 
 const uint8_t AUDIO_CODEC_ADDR = 0x1A;
 
 // I2C address of the Charly 25 trx frontend 
@@ -169,6 +177,12 @@ int receivers = 1;
 int rate = 0;
 
 int sock_ep2;
+
+#ifdef CHARLY25_TCP
+int sock_TCP_Server = 0;
+int sock_TCP_Client = 0;
+#endif
+
 struct sockaddr_in addr_ep6;
 
 int enable_thread = 0;
@@ -474,15 +488,27 @@ void c25_detect_hardware(void)
 				if (read(i2c_fd, input_register, 1) == 1)
 				{
 					C25_TRX_ID = input_register[0];
-
-					if (C25_TRX_ID >= 128 && C25_TRX_ID <= 129)
-					{
-						c25lc_trx_present = true;
-					}
-					else if (C25_TRX_ID == 130)
-					{
-						c25ab_trx_present = true;
-					}
+                    
+                    switch (C25_TRX_ID)
+                    {
+                        case 128:
+                        case 129:
+                        c25lc_trx_present = true;
+                        break;
+                        
+                        case 130:
+                        c25ab_trx_present = true;
+                        break;
+                        
+                        default:
+                        fprintf(stderr, "Charly 25 TRX board with unknown ID found!\nPrototype present?\n");
+#ifdef CHARLY25LC                       
+                        fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
+#else
+                        fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
+#endif
+                        break;
+                    }
 				}
 			}
 			// If no ID chip is present set the board model via pre-processor #define
@@ -651,7 +677,7 @@ void c25_detect_hardware(void)
 	}
 
 	// Version and hardware info for debugging only!
-	fprintf(stderr, "Version 24062017 with the following hardware is present:\n");
+	fprintf(stderr, "Version %s with the following hardware is present:\n", SDR_APP_VERSION);
 
 	if (charly25_present) fprintf(stderr, "- Charly 25 with ");
 	if (hamlab_present) fprintf(stderr, "- HAMlab with ");
@@ -674,8 +700,8 @@ uint16_t c25_switch_att_pre_ant(uint8_t frame_3)
 	c25_att_pre_ant_i2c_new_data |= frame_3 & 3;  // C3: Bit 0-1 - Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
 
 	/*
-	DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
-	C3
+ 	DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
+ 	C3
 	0 0 0 0 0 0 0 0
 	| | | | | | | |
 	| | | | | | + +------------ Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
@@ -1175,8 +1201,7 @@ int main(int argc, char *argv[])
 
 	strncpy(hwaddr.ifr_name, "eth0", IFNAMSIZ);
 	ioctl(sock_ep2, SIOCGIFHWADDR, &hwaddr);
-	for (i = 0; i < 6; ++i) reply[i + 3] = hwaddr.ifr_addr.sa_data[i];
-
+    for (i = 0; i < 6; ++i) reply[i + 3] = hwaddr.ifr_addr.sa_data[i];
 	setsockopt(sock_ep2, SOL_SOCKET, SO_REUSEADDR, (void *)&yes, sizeof(yes));
 
 	tv.tv_sec = 0;
@@ -1187,12 +1212,40 @@ int main(int argc, char *argv[])
 	addr_ep2.sin_family = AF_INET;
 	addr_ep2.sin_addr.s_addr = htonl(INADDR_ANY);
 	addr_ep2.sin_port = htons(1024);
-
 	if (bind(sock_ep2, (struct sockaddr *)&addr_ep2, sizeof(addr_ep2)) < 0)
 	{
 		perror("bind");
 		return EXIT_FAILURE;
 	}
+
+#ifdef CHARLY25_TCP    
+    if ((sock_TCP_Server = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        perror("socket tcp");
+        return EXIT_FAILURE;
+    }
+
+#ifdef DEBUG_PROT
+    fprintf(stderr, "RP <--> PC: sock_TCP_Server: %d\n", sock_TCP_Server);
+#endif
+               
+    setsockopt(sock_TCP_Server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes, sizeof(yes));
+    
+    int sndbufsize = 0xffff;
+    int rcvbufsize = 0xffff;
+    setsockopt(sock_TCP_Server, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbufsize, sizeof(int));
+	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbufsize, sizeof(int));
+
+    if (bind(sock_TCP_Server, (struct sockaddr *)&addr_ep2, sizeof(addr_ep2)) < 0)
+    {
+        perror("bind tcp");
+        return EXIT_FAILURE;
+    }
+	
+    listen(sock_TCP_Server, 1024);
+
+    fprintf(stderr, "RP <--> PC: Listening for TCP client connection request\n");
+#endif
 
 	pthread_attr_init(&attr);
 	pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
@@ -1208,7 +1261,7 @@ int main(int argc, char *argv[])
 
 	while (1)
 	{
-		memset(iovec, 0, sizeof(iovec));
+        memset(iovec, 0, sizeof(iovec));
 		memset(datagram, 0, sizeof(datagram));
 
 		for (i = 0; i < 8; ++i)
@@ -1225,7 +1278,17 @@ int main(int argc, char *argv[])
 		ts.tv_sec = 0;
 		ts.tv_nsec = 1000000;
 
-		size = recvmmsg(sock_ep2, datagram, 8, 0, &ts);
+#ifdef CHARLY25_TCP
+        if (sock_TCP_Client)
+        {
+            size = recvmmsg(sock_TCP_Client, datagram, 8, 0, &ts);
+        }
+        else
+#endif
+        {
+            size = recvmmsg(sock_ep2, datagram, 8, 0, &ts);
+        }
+        
 		if (size < 0 && errno != EAGAIN)
 		{
 			perror("recvfrom");
@@ -1234,11 +1297,16 @@ int main(int argc, char *argv[])
 
 		for (i = 0; i < size; ++i)
 		{
-			memcpy(&code, buffer[i], 4);
+			memcpy(&code, buffer[i], 4); 
 
-			switch (code)
-			{
-			case 0x0201feef:
+            switch (code)
+            {
+            // PC to Red Pitaya transmission via process_ep2
+                case 0x0201feef:
+            
+#ifdef DEBUG_PROT
+                fprintf(stderr, "PC -> RP: data transmission via process_ep2 / code: 0x%08x\n", code);
+#endif
 				if (!tx_mux_data)
 				{
 					while (*tx_cntr > 1922) usleep(1000);
@@ -1268,27 +1336,65 @@ int main(int argc, char *argv[])
 				process_ep2(buffer[i] + 523);
 				break;
 
-			case 0x0002feef:
+                // respond to an incoming Metis detection request
+                case 0x0002feef:
+            
+#ifdef DEBUG_PROT
+                fprintf(stderr, "RP -> PC: respond to an incoming Metis detection request / code: 0x%08x\n", code);
+#endif 
 				reply[2] = 2 + active_thread;
 				memset(buffer[i], 0, 60);
 				memcpy(buffer[i], reply, 11);
-				sendto(sock_ep2, buffer[i], 60, 0, (struct sockaddr *)&addr_from[i], sizeof(addr_from[i]));
+				sendto(sock_ep2, buffer[i], 60, 0, (struct sockaddr *)&addr_from[i], sizeof(addr_from[i]));			
 				break;
-
-			case 0x0004feef:
+            
+                // stop the Red Pitaya to PC transmission via handler_ep6
+                case 0x0004feef:
+            
+#ifdef DEBUG_PROT
+                fprintf(stderr, "RP -> PC: stop the transmission via handler_ep6 / code: 0x%08x\n", code);
+#endif           
 				enable_thread = 0;
 				while (active_thread) usleep(1000);
 				break;
+            
+                // start the Red Pitaya to PC transmission via handler_ep6
+#ifdef CHARLY25_TCP
+                case 0x1104feef:
 
-			case 0x0104feef:
-			case 0x0204feef:
-			case 0x0304feef:
-				enable_thread = 0;
+#ifdef DEBUG_PROT
+                fprintf(stderr, "RP <--> PC: Connect the TCP client to the server / code: 0x%08x\n", code);
+#endif
+                if (sock_TCP_Client <= 0)
+                {                   
+                    if((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) < 0)
+                    {
+                        fprintf(stderr, "*** ERROR TCP accept ***\n");
+                        perror("accept");
+                        return EXIT_FAILURE;
+                    }
+
+#ifdef DEBUG_PROT
+                    fprintf(stderr, "RP <--> PC: sock_TCP_Client: %d\n", sock_TCP_Client);
+#endif                
+                }
+#endif
+
+                case 0x0104feef:
+                case 0x0204feef:
+                case 0x0304feef:
+                
+#ifdef DEBUG_PROT
+                fprintf(stderr, "RP <--> PC: start the handler_ep6 thread / code: 0x%08x\n", code);
+#endif               
+            
+       			enable_thread = 0;
 				while (active_thread) usleep(1000);
 				memset(&addr_ep6, 0, sizeof(addr_ep6));
 				addr_ep6.sin_family = AF_INET;
 				addr_ep6.sin_addr.s_addr = addr_from[i].sin_addr.s_addr;
 				addr_ep6.sin_port = addr_from[i].sin_port;
+                
 				enable_thread = 1;
 				active_thread = 1;
 				rx_sync_data = 0;
@@ -1305,7 +1411,20 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+
 	close(sock_ep2);
+    
+#ifdef CHARLY25_TCP
+    if (sock_TCP_Client)
+    {
+        close(sock_TCP_Client);
+    }
+    
+    if (sock_TCP_Server)
+    {        
+        close(sock_TCP_Server);
+    }
+#endif
 
 	return EXIT_SUCCESS;
 }
@@ -1321,6 +1440,11 @@ void process_ep2(uint8_t *frame)
 	case 0:
 	case 1:
 		receivers = ((frame[4] >> 3) & 7) + 1;  // C4: Bit 3-5 - Number of Receivers (000 = 1, 111 = 8)
+
+#ifdef DEBUG_PROT
+        fprintf(stderr, "PC -> RP: number of receivers: %u\n", receivers);
+#endif
+
 		data = (frame[4] >> 7) & 1;
 		if (rx_sync_data != data)
 		{
@@ -1720,11 +1844,11 @@ void *handler_ep6(void *arg)
 	};
 
 #ifdef CHARLY25AB
-	// C2 â€“ Mercury (receiver) software serial number (0 to 255) - set to 33 by default
+	// C2 – Mercury (receiver) software serial number (0 to 255) - set to 33 by default
 	if (c25_rx1_bpf_i2c_present) header[5] = 146;
 	if (c25_rx2_bpf_i2c_present) header[5] = 147;
 
-	// C3 - Penelope (transmitter) software serial number (0 to 255) â€“ set to 17 by default  
+	// C3 - Penelope (transmitter) software serial number (0 to 255) – set to 17 by default  
 	header[6] = C25_TRX_ID;
 
 	// C4 - Ozy/Magister or Metis (Ethernet interface) or Hermes software serial number (0 to 255) - set to 21 by default
@@ -1859,7 +1983,21 @@ void *handler_ep6(void *arg)
 				if (i2c_codec) memcpy(pointer - 2, &audio[(k++) >> rate], 2);
 			}
 		}
-		sendmmsg(sock_ep2, datagram, m, 0);
+ 
+#ifdef CHARLY25_TCP
+        if (sock_TCP_Client)
+        {
+            sendmmsg(sock_TCP_Client, datagram, m, 0);
+        }
+        else
+#endif
+        {
+            sendmmsg(sock_ep2, datagram, m, 0);
+        }
+        
+#ifdef DEBUG_PROT  
+        fprintf(stderr, "RP -> PC: Sequence number: %u and %u further sequences from %u receivers sent!\n", counter, m-1, receivers);
+#endif 
 	}
 	active_thread = 0;
 	return NULL;
