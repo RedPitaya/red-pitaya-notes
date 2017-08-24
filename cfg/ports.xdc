@@ -146,12 +146,13 @@ set_property PACKAGE_PIN E19 [get_ports Vaux9_v_n]
 
 set_property IOSTANDARD LVCMOS33 [get_ports {exp_p_tri_io[*]}]
 set_property IOSTANDARD LVCMOS33 [get_ports {exp_n_tri_io[*]}]
-set_property SLEW FAST [get_ports {exp_p_tri_io[*]}]
-set_property SLEW FAST [get_ports {exp_n_tri_io[*]}]
+set_property SLEW SLOW [get_ports {exp_p_tri_io[*]}]
+set_property SLEW SLOW [get_ports {exp_n_tri_io[*]}]
 set_property DRIVE 8 [get_ports {exp_p_tri_io[*]}]
 set_property DRIVE 8 [get_ports {exp_n_tri_io[*]}]
-set_property PULLTYPE PULLUP [get_ports {exp_p_tri_io[*]}]
-set_property PULLTYPE PULLUP [get_ports {exp_n_tri_io[*]}]
+set_property PULLUP TRUE [get_ports {exp_n_tri_io[0]}]
+set_property PULLUP TRUE [get_ports {exp_n_tri_io[1]}]
+set_property PULLUP TRUE [get_ports {exp_n_tri_io[2]}]
 
 # this is an improvized pinuot change for HAMLAB
 set_property PACKAGE_PIN G18 [get_ports {exp_p_tri_io[0]}]
@@ -159,15 +160,9 @@ set_property PACKAGE_PIN H17 [get_ports {exp_n_tri_io[0]}]
 set_property PACKAGE_PIN H18 [get_ports {exp_n_tri_io[2]}]
 set_property PACKAGE_PIN K18 [get_ports {exp_n_tri_io[1]}]
 
-set_property IOSTANDARD LVCMOS33 [get_ports exp_p_trg]
-set_property SLEW FAST [get_ports exp_p_trg]
-set_property DRIVE 8 [get_ports exp_p_trg]
-
-set_property PACKAGE_PIN M14 [get_ports exp_p_trg]
-
 set_property IOSTANDARD LVCMOS33 [get_ports {exp_n_alex[*]}]
-set_property SLEW FAST [get_ports {exp_n_alex[*]}]
-set_property DRIVE 8 [get_ports {exp_n_alex[*]}]
+set_property SLEW       SLOW     [get_ports {exp_n_alex[*]}]
+set_property DRIVE      8        [get_ports {exp_n_alex[*]}]
 
 set_property PACKAGE_PIN L15 [get_ports {exp_n_alex[0]}]
 set_property PACKAGE_PIN L17 [get_ports {exp_n_alex[1]}]

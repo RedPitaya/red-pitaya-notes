@@ -1,2 +1,5 @@
 killall sdr-transceiver-hpsdr
-hvlv -i
+
+hamrf -i
+gpiorelay -i
+
