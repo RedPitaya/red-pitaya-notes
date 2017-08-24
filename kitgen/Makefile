@@ -1,9 +1,7 @@
-TCLLIB_URL  = http://github.com/tcltk/tcllib/archive/tcllib_1_16.tar.gz
+TCLLIB_URL  = http://heanet.dl.sourceforge.net/project/tcllib/tcllib/1.18/tcllib-1.18.tar.gz
 ZLIB_URL    = http://heanet.dl.sourceforge.net/project/libpng/zlib/1.2.3/zlib-1.2.3.tar.gz
-TKTABLE_URL = http://heanet.dl.sourceforge.net/project/tktable/tktable/2.10/Tktable2.10.tar.gz
-SQLITE_URL  = https://www.sqlite.org/2015/sqlite-autoconf-3090200.tar.gz
-TCL_URL     = http://heanet.dl.sourceforge.net/project/tcl/Tcl/8.6.4/tcl8.6.4-src.tar.gz
-TK_URL      = http://heanet.dl.sourceforge.net/project/tcl/Tcl/8.6.4/tk8.6.4-src.tar.gz
+TCL_URL     = http://heanet.dl.sourceforge.net/project/tcl/Tcl/8.6.6/tcl8.6.6-src.tar.gz
+TK_URL      = http://heanet.dl.sourceforge.net/project/tcl/Tcl/8.6.6/tk8.6.6-src.tar.gz
 
 VFS_CVS     = :pserver:anonymous@tclvfs.cvs.sourceforge.net:/cvsroot/tclvfs
 
@@ -18,25 +16,19 @@ tars:
 	  curl -LO $(TK_URL)
 	mkdir -p 8.x && cd 8.x && \
 	  curl -LO $(TCLLIB_URL) && \
-	  curl -LO $(ZLIB_URL) && \
-	  curl -LO $(TKTABLE_URL) && \
-	  curl -LO $(SQLITE_URL)
+	  curl -LO $(ZLIB_URL)
 
 untar:
 	mkdir -p 8.6 && cd 8.6 && \
-	  tar xfz tcl8.6.4-src.tar.gz && \
-	  tar xfz tk8.6.4-src.tar.gz && \
-	  mv tcl8.6.4 tcl && \
-	  mv tk8.6.4 tk
+	  tar xfz tcl8.6.6-src.tar.gz && \
+	  tar xfz tk8.6.6-src.tar.gz && \
+	  mv tcl8.6.6 tcl && \
+	  mv tk8.6.6 tk
 	mkdir -p 8.x && cd 8.x && \
-	  tar xfz tcllib_1_16.tar.gz && \
+	  tar xfz tcllib-1.18.tar.gz && \
 	  tar xfz zlib-1.2.3.tar.gz && \
-	  tar xfz Tktable2.10.tar.gz && \
-	  tar xfz sqlite-autoconf-3090200.tar.gz && \
-	  mv tcllib-tcllib_1_16 tcllib && \
-	  mv zlib-1.2.3 zlib && \
-	  mv Tktable2.10 Tktable && \
-	  mv sqlite-autoconf-3090200 sqlite
+	  mv tcllib-1.18 tcllib && \
+	  mv zlib-1.2.3 zlib
 
 configs:
 	sh config.sh 8.6/base-std

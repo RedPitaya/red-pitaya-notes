@@ -9,7 +9,7 @@ diff -rupN old/linux-xlnx-xilinx-v2016.2/arch/arm/configs/xilinx_zynq_defconfig 
  CONFIG_MDIO_BITBANG=y
  CONFIG_INPUT_SPARSEKMAP=y
  CONFIG_INPUT_EVDEV=y
-@@ -241,3 +242,117 @@ CONFIG_RCU_CPU_STALL_TIMEOUT=60
+@@ -241,3 +242,118 @@ CONFIG_RCU_CPU_STALL_TIMEOUT=60
  CONFIG_FONTS=y
  CONFIG_FONT_8x8=y
  CONFIG_FONT_8x16=y
@@ -79,6 +79,7 @@ diff -rupN old/linux-xlnx-xilinx-v2016.2/arch/arm/configs/xilinx_zynq_defconfig 
 +CONFIG_FUSE_FS=y
 +CONFIG_SPI_SPIDEV=y
 +CONFIG_XILINX_PS_EMAC_HWTSTAMP=y
++CONFIG_PPS_CLIENT_GPIO=y
 +CONFIG_USB_EHCI_TT_NEWSCHED=y
 +CONFIG_SND_USB_AUDIO=y
 +CONFIG_USB_SERIAL=y
@@ -127,6 +128,35 @@ diff -rupN old/linux-xlnx-xilinx-v2016.2/arch/arm/configs/xilinx_zynq_defconfig 
 +CONFIG_FB_TFT_WATTEROTT=y
 +CONFIG_FB_FLEX=y
 +CONFIG_FB_TFT_FBTFT_DEVICE=y
+diff -rupN old/linux-xlnx-xilinx-v2016.2/drivers/iio/adc/xilinx-xadc-core.c linux-xlnx-xilinx-v2016.2/drivers/iio/adc/xilinx-xadc-core.c
+--- old/linux-xlnx-xilinx-v2016.2/drivers/iio/adc/xilinx-xadc-core.c
++++ linux-xlnx-xilinx-v2016.2/drivers/iio/adc/xilinx-xadc-core.c
+@@ -1090,7 +1090,7 @@ static int xadc_parse_dt(struct iio_dev
+ 	unsigned int num_channels;
+ 	const char *external_mux;
+ 	u32 ext_mux_chan;
+-	int reg;
++	u32 reg;
+ 	int ret;
+ 
+ 	*conf = 0;
+@@ -1142,13 +1142,13 @@ static int xadc_parse_dt(struct iio_dev
+ 				break;
+ 			}
+ 
+-			channels[num_channels] = xadc_channels[reg + 9];
+-			channels[num_channels].channel = num_channels - 1;
+-
+ 			ret = of_property_read_u32(child, "reg", &reg);
+ 			if (ret || reg > 16)
+ 				continue;
+ 
++			channels[num_channels] = xadc_channels[reg + 9];
++			channels[num_channels].channel = num_channels - 1;
++
+ 			if (of_property_read_bool(child, "xlnx,bipolar"))
+ 				channels[num_channels].scan_type.sign = 's';
+ 
 diff -rupN old/linux-xlnx-xilinx-v2016.2/drivers/misc/eeprom/at24.c linux-xlnx-xilinx-v2016.2/drivers/misc/eeprom/at24.c
 --- old/linux-xlnx-xilinx-v2016.2/drivers/misc/eeprom/at24.c
 +++ linux-xlnx-xilinx-v2016.2/drivers/misc/eeprom/at24.c

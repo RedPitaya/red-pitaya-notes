@@ -24,18 +24,20 @@ int main(int argc, char *argv[])
 {
   FILE *fileIn;
   int mmapfd;
-  void *cfg, *sts, *dac;
-  char *end, *name = "/dev/mem";
+  volatile uint32_t *slcr;
+  volatile void *cfg, *sts, *dac;
+  char *end;
   char buffer[65536];
   long number;
   size_t size;
 
-  if((mmapfd = open(name, O_RDWR)) < 0)
+  if((mmapfd = open("/dev/mem", O_RDWR)) < 0)
   {
     perror("open");
     return 1;
   }
 
+  slcr = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0xF8000000);
   cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, mmapfd, 0x40000000);
   sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, mmapfd, 0x40001000);
   dac = mmap(NULL, 32*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, mmapfd, 0x40020000);

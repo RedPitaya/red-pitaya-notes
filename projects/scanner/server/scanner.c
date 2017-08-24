@@ -17,19 +17,19 @@ int main()
   int i, j, counter, yes = 1;
   uint32_t command, code, data, period, pulses, shdelay, shtime;
   uint64_t buffer[1024], tmp;
-  volatile void *cfg;
-  volatile void *sts;
+  volatile uint32_t *slcr;
+  volatile void *cfg, *sts;
   volatile uint8_t *rst;
   volatile uint32_t *dac;
   volatile uint64_t *adc;
-  char *name = "/dev/mem";
 
-  if((fd = open(name, O_RDWR)) < 0)
+  if((fd = open("/dev/mem", O_RDWR)) < 0)
   {
     perror("open");
     return EXIT_FAILURE;
   }
 
+  slcr = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0xF8000000);
   cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40000000);
   sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40001000);
   dac = mmap(NULL, 16*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40010000);

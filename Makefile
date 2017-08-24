@@ -14,24 +14,25 @@ PROC = ps7_cortexa9_0
 
 CORES = axi_axis_reader_v1_0 axi_axis_writer_v1_0 axi_bram_reader_v1_0 \
   axi_bram_writer_v1_0 axi_cfg_register_v1_0 axis_accumulator_v1_0 \
-  axis_alex_v1_0 axis_bram_reader_v1_0 axis_bram_writer_v1_0 \
-  axis_constant_v1_0 axis_counter_v1_0 axis_decimator_v1_0 \
-  axis_fifo_v1_0 axis_gpio_reader_v1_0 axis_histogram_v1_0 \
-  axis_interpolator_v1_0 axis_keyer_v1_0 axis_lfsr_v1_0 axis_oscilloscope_v1_0 \
-  axis_packetizer_v1_0 axis_phase_generator_v1_0 \
+  axis_alex_v1_0 axis_averager_v1_0 axis_bram_reader_v1_0 \
+  axis_bram_writer_v1_0 axis_constant_v1_0 axis_counter_v1_0 \
+  axis_decimator_v1_0 axis_fifo_v1_0 axis_gpio_reader_v1_0 axis_histogram_v1_0 \
+  axis_i2s_v1_0 axis_interpolator_v1_0 axis_keyer_v1_0 axis_lfsr_v1_0 \
+  axis_negator_v1_0 axis_oscilloscope_v1_0 axis_packetizer_v1_0 \
+  axis_phase_generator_v1_0 axis_pps_counter_v1_0 \
   axis_pulse_height_analyzer_v1_0 axis_ram_writer_v1_0 \
-  axis_red_pitaya_adc_v1_0 axis_red_pitaya_dac_v1_0 axis_stepper_v1_0 \
+  axis_red_pitaya_adc_v2_0 axis_red_pitaya_dac_v1_0 axis_stepper_v1_0 \
   axis_tagger_v1_0 axis_timer_v1_0 axis_trigger_v1_0 axi_sts_register_v1_0 \
   axis_validator_v1_0 axis_variable_v1_0 axis_variant_v1_0 axis_zeroer_v1_0 \
-  dna_reader_v1_0 gpio_debouncer_v1_0 pulse_generator_v1_0
+  dna_reader_v1_0 gpio_debouncer_v1_0 pulse_generator_v1_0 shift_register_v1_0
 
 VIVADO = vivado -nolog -nojournal -mode batch
 HSI = hsi -nolog -nojournal -mode batch
 RM = rm -rf
 
-UBOOT_TAG = xilinx-v2016.2
-LINUX_TAG = xilinx-v2016.2
-DTREE_TAG = xilinx-v2016.2
+UBOOT_TAG = xilinx-v2016.4
+LINUX_TAG = xilinx-v2016.4
+DTREE_TAG = xilinx-v2016.4
 
 UBOOT_DIR = tmp/u-boot-xlnx-$(UBOOT_TAG)
 LINUX_DIR = tmp/linux-xlnx-$(LINUX_TAG)
@@ -50,11 +51,15 @@ UBOOT_CFLAGS = "-O2 -march=armv7-a -mcpu=cortex-a9 -mtune=cortex-a9 -mfpu=neon -
 ARMHF_CFLAGS = "-O2 -march=armv7-a -mcpu=cortex-a9 -mtune=cortex-a9 -mfpu=neon -mfloat-abi=hard"
 
 RTL_TAR = tmp/rtl8192cu.tgz
-RTL_URL = https://googledrive.com/host/0B-t5klOOymMNfmJ0bFQzTVNXQ3RtWm5SQ2NGTE1hRUlTd3V2emdSNzN6d0pYamNILW83Wmc/rtl8192cu/rtl8192cu.tgz
+RTL_URL = https://www.dropbox.com/sh/5fy49wae6xwxa8a/AABNwuLz3dPHK06vEDHmG8mfa/rtl8192cu/rtl8192cu.tgz?dl=1
 
 .PRECIOUS: tmp/cores/% tmp/%.xpr tmp/%.hwdef tmp/%.bit tmp/%.fsbl/executable.elf tmp/%.tree/system.dts
 
 all: boot.bin uImage devicetree.dtb fw_printenv
+
+xpr: tmp/$(NAME).xpr
+
+bit: tmp/$(NAME).bit
 
 $(UBOOT_TAR):
 	mkdir -p $(@D)
@@ -149,4 +154,5 @@ tmp/%.tree/system.dts: tmp/%.hwdef $(DTREE_DIR)
 clean:
 	$(RM) uImage fw_printenv boot.bin devicetree.dtb tmp
 	$(RM) .Xil usage_statistics_webtalk.html usage_statistics_webtalk.xml
+	$(RM) vivado*.jou vivado*.log
 	$(RM) webtalk*.jou webtalk*.log

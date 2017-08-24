@@ -14,8 +14,9 @@ int printdata = 0;
 int main(int argc, char *argv[])
 {
   int fd, i;
-  volatile void *cfg, *mux;
+  volatile void *cfg;
   volatile uint8_t *rst;
+  volatile uint16_t *level[2];
   volatile uint32_t *fifo;
   unsigned char symbols[162];
   char *message, *hashtab;
@@ -66,13 +67,13 @@ int main(int argc, char *argv[])
 
   if(!config_lookup_int(&config, "chan", &chan))
   {
-    fprintf(stderr, "No 'chan' setting in configuration file.\n", i);
+    fprintf(stderr, "No 'chan' setting in configuration file.\n");
     return EXIT_FAILURE;
   }
 
   if(chan < 1 || chan > 2)
   {
-    fprintf(stderr, "Wrong 'chan' setting in configuration file.\n", i);
+    fprintf(stderr, "Wrong 'chan' setting in configuration file.\n");
     return EXIT_FAILURE;
   }
 
@@ -96,20 +97,20 @@ int main(int argc, char *argv[])
 
   cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40001000);
   fifo = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x4000B000);
-  mux = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x4000C000);
+
+  level[0] = ((uint16_t *)(cfg + 36));
+  level[1] = ((uint16_t *)(cfg + 38));
 
   if(chan == 1)
   {
-    *(uint32_t *)(mux + 64) = 0;
-    *(uint32_t *)(mux + 68) = 1;
+    *level[0] = 32766;
+    *level[1] = 0;
   }
   else
   {
-    *(uint32_t *)(mux + 64) = 1;
-    *(uint32_t *)(mux + 68) = 0;
+    *level[0] = 0;
+    *level[1] = 32766;
   }
-
-  *(uint32_t *)mux = 2;
 
   rst = (uint8_t *)(cfg + 1);
 

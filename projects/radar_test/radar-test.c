@@ -11,16 +11,17 @@ int main()
   int fd, i;
   int position, limit, offset;
   int16_t value[2];
-  void *cfg, *sts, *gpio_n, *gpio_p, *ram;
-  char *name = "/dev/mem";
+  volatile uint32_t *slcr;
+  volatile void *cfg, *sts, *gpio_n, *gpio_p, *ram;
   char buffer[32768];
 
-  if((fd = open(name, O_RDWR)) < 0)
+  if((fd = open("/dev/mem", O_RDWR)) < 0)
   {
     perror("open");
     return EXIT_FAILURE;
   }
 
+  slcr = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0xF8000000);
   cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40000000);
   sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40001000);
   gpio_n = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40002000);

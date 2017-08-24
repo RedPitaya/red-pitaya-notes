@@ -7,18 +7,28 @@ GRID=
 JOBS=2
 NICE=10
 
-RECORDER=/root/write-c2-files
-CONFIG=/root/write-c2-files.cfg
+DIR=`readlink -f $0`
+DIR=`dirname $DIR`
 
-DECODER=/root/wsprd/wsprd
+RECORDER=$DIR/write-c2-files
+CONFIG=write-c2-files.cfg
+
+DECODER=$DIR/wsprd/wsprd
 ALLMEPT=ALL_WSPR.TXT
+
+GPIO=$DIR/gpio-output
 
 date
 
+test $DIR/$CONFIG -ot $CONFIG || cp $DIR/$CONFIG $CONFIG
+
 echo "Sleeping ..."
 
-SECONDS=`date +%S`
-sleep `expr 60 - $SECONDS`
+SECONDS=`date '+\`expr 58 - %-S\`.\`expr 999999999 - %-N\`'`
+sleep `eval echo $SECONDS`
+
+$GPIO 0
+sleep 1
 
 date
 TIMESTAMP=`date --utc +'%y%m%d_%H%M'`
@@ -41,6 +51,6 @@ echo "Uploading ..."
 # and then sort them by date/time/frequency
 sort -nr -k 4,4 $ALLMEPT | awk '!seen[$1"_"$2"_"int($6)"_"$7] {print} {++seen[$1"_"$2"_"int($6)"_"$7]}' | sort -n -k 1,1 -k 2,2 -k 6,6 -o $ALLMEPT
 
-curl -sS -m 8 -F allmept=@$ALLMEPT -F call=$CALL -F grid=$GRID http://wsprnet.org/post > /dev/null
+curl -sS -m 30 -F allmept=@$ALLMEPT -F call=$CALL -F grid=$GRID http://wsprnet.org/post > /dev/null
 
-test $? -ne 0 || rm -f $ALLMEPT
+rm -f $ALLMEPT
