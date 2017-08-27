@@ -290,7 +290,6 @@ uint16_t alex_data_0 = 0;
 uint16_t alex_data_1 = 0;
 
 uint32_t freq_data[3] = {0, 0, 0};
-#endif
 
 /* calculate lookup table from drive scale value to 0.5 dB attenuation units */
 void calc_log_lookup()
@@ -315,7 +314,6 @@ void calc_log_lookup()
 	}
 }
 
-#ifndef CHARLY25AB
 void alex_write()
 {
 	uint32_t max = freq_data[1] > freq_data[2] ? freq_data[1] : freq_data[2];
@@ -1226,7 +1224,10 @@ int main(int argc, char *argv[])
 		*rx_rst |= 4;
 	}
 
+#ifndef CHARLY25AB
 	calc_log_lookup();
+#endif
+
 	if ((sock_ep2 = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
 	{
 		perror("socket");
