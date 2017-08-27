@@ -6,6 +6,7 @@
 21.09.2016 DC2PD: add code for controlling AD8331 VGA with MCP4725 DAC (I2C).
 02.10.2016 DL9LJ: add code for controlling ICOM IC-735 (UART).
 03.12.2016 KA6S: add CW keyer code.
+16.08.2017 G8NJJ: add code for controlling G8NJJ Arduino sketch (I2C).
 */
 /*
 03.10.2016 DL8GM and DG8MG: Modified code for Charly 25 - 4 band transceiver board switching via I2C.
@@ -32,6 +33,7 @@
 11.06.2017 DG8MG: Extended the hardware detection routine, it's now reading the board id's and transfers them to the frontend software.
 12.06.2017 DG8MG: Changed the CW keyer handling for Charly 25 boards due to sporadic PA blocking issues when starting CW.
 14.06.2017 DG8MG: Extended the hardware detection routine, it's now also working with Charly 25 boards without ID chips.
+25.08.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/b3c63cc2b5522cd72057414995a317a34efd6a23
 */
 
 // DG8MG
@@ -86,7 +88,7 @@
 
 #define I2C_SLAVE       0x0703 /* Use this slave address */
 #define I2C_SLAVE_FORCE 0x0706 /* Use this slave address, even if it
-								  is already in use by a driver! */
+                                  is already in use by a driver! */
 
 #ifndef CHARLY25AB
 #define ADDR_PENE 0x20 /* PCA9555 address 0 */
@@ -97,10 +99,11 @@
 #define ADDR_CODEC 0x1A /* WM8731 or TLV320AIC23B address 0 */
 #define ADDR_DAC0 0x60 /* MCP4725 address 0 */
 #define ADDR_DAC1 0x61 /* MCP4725 address 1 */
+#define ADDR_ARDUINO 0x40 /* G8NJJ Arduino sketch */
 #endif
 
 #ifdef CHARLY25AB
-#define SDR_APP_VERSION "20170625"
+#define SDR_APP_VERSION "20170825"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -156,8 +159,9 @@ const uint32_t C25_160M_LOW_FREQ = 1795000;
 const uint32_t C25_160M_HIGH_FREQ = 2005000;
 #endif
 
-volatile uint32_t *rx_freq[4], *rx_rate, *tx_freq, *alex, *tx_mux, *dac_freq, *dac_mux;
-volatile uint16_t *rx_cntr, *tx_cntr, *tx_level, *dac_cntr, *dac_level, *adc_cntr;
+volatile uint32_t *rx_freq[2], *tx_freq, *alex, *tx_mux, *dac_freq, *dac_mux;
+volatile uint16_t *rx_rate, *rx_cntr, *tx_cntr, *dac_cntr, *adc_cntr;
+volatile int16_t *tx_level, *dac_level;
 volatile uint8_t *gpio_in, *gpio_out, *rx_rst, *tx_rst, *lo_rst;
 volatile uint64_t *rx_data;
 volatile uint32_t *tx_data, *dac_data;
@@ -195,6 +199,7 @@ int i2c_codec = 0;
 #ifndef CHARLY25AB
 int i2c_dac0 = 0;
 int i2c_dac1 = 0;
+int i2c_arduino = 0;
 
 uint16_t i2c_pene_data = 0;
 uint16_t i2c_alex_data = 0;
@@ -203,6 +208,16 @@ uint16_t i2c_misc_data = 0;
 uint16_t i2c_drive_data = 0;
 uint16_t i2c_dac0_data = 0xfff;
 uint16_t i2c_dac1_data = 0xfff;
+
+uint16_t i2c_ard_frx1_data = 0; /* rx 1 freq in kHz */
+uint16_t i2c_ard_frx2_data = 0; /* rx 2 freq in kHz */
+uint16_t i2c_ard_ftx_data = 0; /* tx freq in kHz */
+uint32_t i2c_ard_ocant_data = 0; /* oc output and ant */
+uint32_t i2c_ard_txatt_data = 0; /* tx attenuation and oddments  */
+uint16_t i2c_ard_rxatt_data = 0; /* rx attenuation */
+
+uint8_t log_table_lookup[256]; /* lookup table from linear scale to
+                                  6 bit / 0.5 dB attenuation */
 #endif
 
 uint8_t i2c_boost_data = 0;
@@ -217,6 +232,7 @@ uint8_t rx_att_data = 0;
 #endif
 
 uint8_t tx_mux_data = 0;
+uint8_t tx_eer_data = 0;
 
 uint16_t cw_hang = 0;
 uint8_t cw_reversed = 0;
@@ -250,6 +266,16 @@ ssize_t i2c_write_addr_data16(int fd, uint8_t addr, uint16_t data)
 }
 
 #ifndef CHARLY25AB
+ssize_t i2c_write_addr_data24(int fd, uint8_t addr, uint32_t data)
+{
+	uint8_t buffer[4];
+	buffer[0] = addr;
+	buffer[1] = data;
+	buffer[2] = data >> 8;
+	buffer[3] = data >> 16;
+	return write(fd, buffer, 4);
+}
+
 ssize_t i2c_write_data16(int fd, uint16_t data)
 {
 	uint8_t buffer[2];
@@ -263,8 +289,33 @@ uint16_t alex_data_tx = 0;
 uint16_t alex_data_0 = 0;
 uint16_t alex_data_1 = 0;
 
-uint32_t freq_data[3] = { 0, 0, 0 };
+uint32_t freq_data[3] = {0, 0, 0};
+#endif
 
+/* calculate lookup table from drive scale value to 0.5 dB attenuation units */
+void calc_log_lookup()
+{
+	int index;
+	float value;
+	uint8_t att;
+
+	log_table_lookup[0] = 63; /* max att if no drive */
+	for(index = 1; index < 256; ++index)
+	{
+		value = -40.0 * log10((float)index / 255.0);
+		if(value > 63.0)
+		{
+			att = 63;
+		}
+		else
+		{
+			att = (uint8_t)value;
+		}
+		log_table_lookup[index] = att;
+	}
+}
+
+#ifndef CHARLY25AB
 void alex_write()
 {
 	uint32_t max = freq_data[1] > freq_data[2] ? freq_data[1] : freq_data[2];
@@ -910,12 +961,13 @@ int main(int argc, char *argv[])
 	struct sched_param param;
 	pthread_attr_t attr;
 	pthread_t thread;
-	volatile uint32_t *slcr;
+
 	volatile void *cfg, *sts;
 	volatile int32_t *tx_ramp, *dac_ramp;
 	volatile uint16_t *tx_size, *dac_size;
+	volatile int16_t *ps_level;
 	float scale, ramp[1024], a[4] = { 0.35875, 0.48829, 0.14128, 0.01168 };
-	uint8_t reply[11] = { 0xef, 0xfe, 2, 0, 0, 0, 0, 0, 0, 21, 0 };
+	uint8_t reply[11] = { 0xef, 0xfe, 2, 0, 0, 0, 0, 0, 0, 32, 1 };
 	uint8_t id[4] = { 0xef, 0xfe, 1, 6 };
 	uint32_t code;
 	struct termios tty;
@@ -1015,6 +1067,14 @@ int main(int argc, char *argv[])
 				i2c_dac1 = 1;
 			}
 		}
+		if(ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO) >= 0)
+		{
+			if(i2c_write_addr_data16(i2c_fd, 0x1, i2c_ard_frx1_data) > 0)
+			{
+				i2c_arduino = 1;
+			}
+		}
+
 		if (ioctl(i2c_fd, I2C_SLAVE, ADDR_CODEC) >= 0)
 		{
 			/* reset */
@@ -1043,7 +1103,6 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	slcr = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0xF8000000);
 	sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40000000);
 	cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40001000);
 
@@ -1057,7 +1116,7 @@ int main(int argc, char *argv[])
 	dac_ramp = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40006000);
 	dac_data = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40007000);
 	adc_data = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40008000);
-	tx_data = mmap(NULL, 2 * sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x4000a000);
+	tx_data = mmap(NULL, 4*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd,  0x4000c000);
 	rx_data = mmap(NULL, 8 * sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40010000);
 	xadc = mmap(NULL, 16 * sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40020000);
 
@@ -1066,20 +1125,19 @@ int main(int argc, char *argv[])
 	tx_rst = ((uint8_t *)(cfg + 2));
 	gpio_out = ((uint8_t *)(cfg + 3));
 
-	rx_rate = ((uint32_t *)(cfg + 4));
+	rx_rate = ((uint16_t *)(cfg + 4));
 
 	rx_freq[0] = ((uint32_t *)(cfg + 8));
 	rx_freq[1] = ((uint32_t *)(cfg + 12));
-	rx_freq[2] = ((uint32_t *)(cfg + 16));
-	rx_freq[3] = ((uint32_t *)(cfg + 20));
 
-	tx_freq = ((uint32_t *)(cfg + 24));
-	tx_size = ((uint16_t *)(cfg + 28));
-	tx_level = ((uint16_t *)(cfg + 30));
+	tx_freq = ((uint32_t *)(cfg + 16));
+	tx_size = ((uint16_t *)(cfg + 20));
+	tx_level = ((int16_t *)(cfg + 22));
+	ps_level = ((int16_t *)(cfg + 24));
 
-	dac_freq = ((uint32_t *)(cfg + 32));
-	dac_size = ((uint16_t *)(cfg + 36));
-	dac_level = ((uint16_t *)(cfg + 38));
+	dac_freq = ((uint32_t *)(cfg + 28));
+	dac_size = ((uint16_t *)(cfg + 32));
+	dac_level = ((int16_t *)(cfg + 34));
 
 	rx_cntr = ((uint16_t *)(sts + 12));
 	tx_cntr = ((uint16_t *)(sts + 14));
@@ -1087,18 +1145,12 @@ int main(int argc, char *argv[])
 	adc_cntr = ((uint16_t *)(sts + 18));
 	gpio_in = ((uint8_t *)(sts + 20));
 
-	/* set FPGA clock to 143 MHz */
-	slcr[2] = 0xDF0D;
-	slcr[92] = (slcr[92] & ~0x03F03F30) | 0x00100700;
-
 	/* set all GPIO pins to low */
 	*gpio_out = 0;
 
 	/* set default rx phase increment */
 	*rx_freq[0] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
 	*rx_freq[1] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
-	*rx_freq[2] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
-	*rx_freq[3] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
 
 	/* set default rx sample rate */
 	*rx_rate = 1000;
@@ -1121,8 +1173,9 @@ int main(int argc, char *argv[])
 	*tx_size = size;
 
 	/* set default tx level */
-	*tx_level = 32767;
-
+	*tx_level = 32766;
+	/* set ps level */
+	*ps_level = 23080;
 	/* set default tx mux channel */
 	tx_mux[16] = 0;
 	tx_mux[0] = 2;
@@ -1130,6 +1183,10 @@ int main(int argc, char *argv[])
 	/* reset tx and codec DAC fifo */
 	*tx_rst |= 3;
 	*tx_rst &= ~3;
+
+	/* reset tx lo */
+	*lo_rst &= ~4;
+	*lo_rst |= 4;
 
 	if (i2c_codec)
 	{
@@ -1157,7 +1214,7 @@ int main(int argc, char *argv[])
 		*dac_size = size;
 
 		/* set default dac level */
-		*dac_level = 32767;
+		*dac_level = 32766;
 
 		/* set default dac mux channel */
 		dac_mux[16] = 0;
@@ -1169,6 +1226,7 @@ int main(int argc, char *argv[])
 		*rx_rst |= 4;
 	}
 
+	calc_log_lookup();
 	if ((sock_ep2 = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
 	{
 		perror("socket");
@@ -1243,12 +1301,20 @@ int main(int argc, char *argv[])
 			case 0x0201feef:
 				if (!tx_mux_data)
 				{
-					while (*tx_cntr > 1922) usleep(1000);
-					if (*tx_cntr == 0) for (j = 0; j < 1260; ++j) *tx_data = 0;
+					while (*tx_cntr > 3844) usleep(1000);
+					if (*tx_cntr == 0) for (j = 0; j < 2520; ++j) *tx_data = 0;
 					if ((*gpio_out & 1) | (*gpio_in & 1))
 					{
-						for (j = 0; j < 504; j += 8) *tx_data = *(uint32_t *)(buffer[i] + 20 + j);
-						for (j = 0; j < 504; j += 8) *tx_data = *(uint32_t *)(buffer[i] + 532 + j);
+						for(j = 0; j < 504; j += 8)
+						{
+							*tx_data = tx_eer_data ? *(uint32_t *)(buffer[i] + 16 + j) : 0;
+							*tx_data = *(uint32_t *)(buffer[i] + 20 + j);
+						}
+						for(j = 0; j < 504; j += 8)
+						{
+							*tx_data = tx_eer_data ? *(uint32_t *)(buffer[i] + 528 + j) : 0;
+							*tx_data = *(uint32_t *)(buffer[i] + 532 + j);
+						}
 					}
 					else
 					{
@@ -1294,9 +1360,9 @@ int main(int argc, char *argv[])
 				enable_thread = 1;
 				active_thread = 1;
 				rx_sync_data = 0;
-				/* reset all los */
-				*lo_rst &= ~31;
-				*lo_rst |= 31;
+				/* reset rx los */
+				*lo_rst &= ~3;
+				*lo_rst |= 3;
 				if (pthread_create(&thread, NULL, handler_ep6, NULL) < 0)
 				{
 					perror("pthread_create");
@@ -1316,7 +1382,9 @@ void process_ep2(uint8_t *frame)
 {
 	uint32_t freq, c25_rx1_freq, c25_rx2_freq, c25_rx3_freq, c25_rx4_freq;
 	uint16_t data;
+	uint32_t data32;
 	uint8_t ptt, preamp, att, boost;
+	uint8_t data8;
 
 	switch (frame[0])
 	{
@@ -1330,11 +1398,12 @@ void process_ep2(uint8_t *frame)
 			if (rx_sync_data)
 			{
 				*rx_freq[1] = *rx_freq[0];
-				/* reset first two los */
+				/* reset rx los */
 				*lo_rst &= ~3;
 				*lo_rst |= 3;
 			}
 		}
+		tx_eer_data = frame[2] & 1;
 
 #ifndef CHARLY25AB
 		/* set output pins */
@@ -1403,12 +1472,51 @@ void process_ep2(uint8_t *frame)
 				i2c_write_data16(i2c_fd, data);
 			}
 		}
-		break;
+
+		if(i2c_arduino)
+		{
+			/*
+			24 bit data field: 0RRR00TT0XXXXXXX0YYYYYYY
+			RRR=RX ant
+			TT=TX ant
+			XXXXXXX=RX OC
+			YYYYYYY=TX OC
+			*/
+			if(frame[0] & 0x01)
+			{
+				data32 = i2c_ard_ocant_data & 0x00fc7f00;
+				data32 |= (frame[2] >> 1); /* add back in OC bits */
+				data32 |= (frame[4] & 0x03) << 16;  /* add back TX ant bits */
+			}
+			else
+			{
+				data32 = i2c_ard_ocant_data & 0x0003007f;
+				data32 |= (frame[2] << 7); /* add back in OC bits */
+				data8 = (frame[3] & 0x60) >> 5; /* RX aux bits */
+				if(data8 == 0)
+				{
+					data32 |= (frame[4] & 0x03) << 20; /* use TX bit positions */
+				}
+				else
+				{
+					data8 += 2;
+					data32 |= (data8 & 0x07) << 20; /* RX bit positions */
+				}
+			}
+			if(data32 != i2c_ard_ocant_data)
+			{
+				i2c_ard_ocant_data = data32;
+				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+				i2c_write_addr_data24(i2c_fd, 0x4, data32);
+			}
+		}
+
+      break;
 #endif
 
 	case 2:  // C0: Bit 1-4 - Transmitter - C0: Bit 0 - MOX -> 0 = inactive 
 	case 3:  // C0: Bit 1-4 - Transmitter - C0: Bit 0 - MOX -> 1 = active
-	  /* set tx phase increment */
+	/* set tx phase increment */
 
 #ifdef CHARLY25AB    
 		c25_mox = frame[0] & 1;
@@ -1443,13 +1551,23 @@ void process_ep2(uint8_t *frame)
 			alex_write();
 			icom_write();
 			if (i2c_misc) misc_write();
+			if(i2c_arduino)
+			{
+				data = freq / 1000;
+				if(data != i2c_ard_ftx_data)
+				{
+					i2c_ard_ftx_data = data;
+					ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+					i2c_write_addr_data16(i2c_fd, 0x03, data);
+				}
+			}
 		}
 		break;
 #endif
 
 	case 4:  // C0: Bit 1-4 - Receiver 1 - C0: Bit 0 - MOX -> 0 = inactive
 	case 5:  // C0: Bit 1-4 - Receiver 1 - C0: Bit 0 - MOX -> 1 = active
-	  /* set rx phase increment */
+	/* set rx phase increment */
 
 #ifdef CHARLY25AB
 		c25_rx1_freq = ntohl(*(uint32_t *)(frame + 1));
@@ -1486,19 +1604,30 @@ void process_ep2(uint8_t *frame)
 			freq_data[1] = freq;
 			if (rx_sync_data)
 			{
-				/* reset first two los */
+				/* reset rx los */
 				*lo_rst &= ~3;
 				*lo_rst |= 3;
 			}
 			alex_write();
 			if (i2c_misc) misc_write();
+
+			if(i2c_arduino)
+			{
+				data = freq / 1000;
+				if(data != i2c_ard_frx1_data)
+				{
+					i2c_ard_frx1_data = data;
+					ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+					i2c_write_addr_data16(i2c_fd, 0x01, data);
+				}
+			}
 		}
 		break;
 #endif
 
 	case 6:  // C0: Bit 1-4 - Receiver 2 - C0: Bit 0 - MOX -> 0 = inactive
 	case 7:  // C0: Bit 1-4 - Receiver 2 - C0: Bit 0 - MOX -> 1 = active
-	  /* set rx phase increment */
+		/* set rx phase increment */
 		if (rx_sync_data) break;
 
 #ifdef CHARLY25AB
@@ -1528,25 +1657,19 @@ void process_ep2(uint8_t *frame)
 			freq_data[2] = freq;
 			alex_write();
 			if (i2c_misc) misc_write();
+			if(i2c_arduino)
+			{
+				data = freq / 1000;
+				if(data != i2c_ard_frx2_data)
+				{
+				i2c_ard_frx2_data = data;
+				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+				i2c_write_addr_data16(i2c_fd, 0x02, data);
+				}
+			}
 		}
 		break;
 #endif
-
-	case 8:  // C0: Bit 1-4 - Receiver 3 - C0: Bit 0 - MOX -> 0 = inactive
-	case 9:  // C0: Bit 1-4 - Receiver 3 - C0: Bit 0 - MOX -> 1 = active
-	  /* set rx phase increment */
-		freq = ntohl(*(uint32_t *)(frame + 1));
-		if (freq < freq_min || freq > freq_max) break;
-		*rx_freq[2] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
-		break;
-
-	case 10:  // C0: Bit 1-4 - Receiver 4 - C0: Bit 0 - MOX -> 0 = inactive
-	case 11:  // C0: Bit 1-4 - Receiver 4 - C0: Bit 0 - MOX -> 1 = active
-	  /* set rx phase increment */
-		freq = ntohl(*(uint32_t *)(frame + 1));
-		if (freq < freq_min || freq > freq_max) break;
-		*rx_freq[3] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
-		break;
 
 	case 18:
 	case 19:
@@ -1601,15 +1724,33 @@ void process_ep2(uint8_t *frame)
 				i2c_write_addr_data16(i2c_fd, 0xa9, data << 8 | data);
 			}
 		}
+		else if(i2c_arduino)
+		{
+			/*
+			24 bit data field 000000BA000RRRRR00TTTTTT
+			BA=PA disable, 6m LNA
+			RRRRR=5 bits RX att when in TX
+			TTTTTT=6 bits TX att (0.5 dB units)
+			*/
+			data32 = i2c_ard_txatt_data & 0x00001f00; /* remove TX att */
+			data32 |= log_table_lookup[data];
+			data32 |= (frame[3] & 0xc0) << 10;
+			if(data32 != i2c_ard_txatt_data)
+			{
+				i2c_ard_txatt_data = data32;
+				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+				i2c_write_addr_data24(i2c_fd, 0x05, data32);
+			}
+		}
 		else
 		{
-			*tx_level = (data + 1) * 128 - 1;
+			*tx_level = (int16_t)floor(data * 128.494 + 0.5);
 		}
 #endif
 
 #ifdef CHARLY25AB
 		data = frame[1];
-		*tx_level = (data + 1) * 128 - 1;
+		*tx_level = (int16_t)floor(data * 128.494 + 0.5);
 #endif
 
 		/* configure microphone boost */
@@ -1630,14 +1771,28 @@ void process_ep2(uint8_t *frame)
 		}
 		break;
 
+#ifndef CHARLY25AB
 	case 20:
 	case 21:
-
-#ifndef CHARLY25AB
 		rx_att_data = frame[4] & 0x1f;
-#endif
-
+		if(i2c_arduino)
+		{
+			/*
+			16 bit data field 000RRRRR000TTTTT
+			RRRRR=RX2
+			TTTTT=RX1
+			*/
+			data = i2c_ard_rxatt_data & 0x00001f00; /* remove RX1 att */
+			data |= (frame[4] & 0x1f);
+			if(data != i2c_ard_rxatt_data)
+			{
+				i2c_ard_rxatt_data = data;
+				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+				i2c_write_addr_data16(i2c_fd, 0x06, data);
+			}
+		}
 		break;
+#endif
 
 	case 22:
 	case 23:
@@ -1661,6 +1816,47 @@ void process_ep2(uint8_t *frame)
 		cw_spacing = (frame[4] >> 7) & 1;
 		break;
 
+#ifndef CHARLY25AB
+		if(i2c_arduino)
+		{
+			/*
+			16 bit data field 000RRRRR000TTTTT
+			RRRRR=RX2;
+			TTTTT=RX1
+			*/
+			data = i2c_ard_rxatt_data & 0x1f; /* remove RX2 att */
+			data |= (frame[1] & 0x1f) << 8;
+			if(data != i2c_ard_rxatt_data)
+			{
+				i2c_ard_rxatt_data = data;
+				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+				i2c_write_addr_data16(i2c_fd, 0x06, data);
+			}
+		}
+		break;
+
+	case 28:
+	case 29:
+		if(i2c_arduino)
+		{
+			/*
+			24 bit data field 000000BA000RRRRR00TTTTTT
+			BA=PA disable, 6m LNA
+			RRRRR=5 bits RX att when in TX
+			TTTTTT=6 bits TX att (0.5 dB units)
+			*/
+			data32 = i2c_ard_txatt_data & 0x0003003f; /* remove RX att */
+			data32 |= (frame[3] & 0x1f) << 8;
+			if(data32 != i2c_ard_txatt_data)
+			{
+				i2c_ard_txatt_data = data32;
+				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+				i2c_write_addr_data24(i2c_fd, 0x05, data32);
+			}
+		}
+		break;
+#endif
+
 	case 30:
 	case 31:
 		cw_int_data = frame[1] & 1;
@@ -1670,7 +1866,7 @@ void process_ep2(uint8_t *frame)
 		if (i2c_codec)
 		{
 			data = dac_level_data;
-			*dac_level = (data + 1) * 256 - 1;
+			*dac_level = (int16_t)floor(data * 128.494 + 0.5);
 		}
 		break;
 
