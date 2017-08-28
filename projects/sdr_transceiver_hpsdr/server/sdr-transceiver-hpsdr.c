@@ -1443,9 +1443,7 @@ int main(int argc, char *argv[])
                         return EXIT_FAILURE;
                     }
 
-#ifdef DEBUG_PROT
-                    fprintf(stderr, "RP <--> PC: sock_TCP_Client: %d\n", sock_TCP_Client);
-#endif                
+                    fprintf(stderr, "RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
                 }
 #endif
 
