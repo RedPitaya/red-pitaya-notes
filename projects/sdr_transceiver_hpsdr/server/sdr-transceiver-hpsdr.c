@@ -35,6 +35,7 @@
 14.06.2017 DG8MG: Extended the hardware detection routine, it's now also working with Charly 25 boards without ID chips.
 06.08.2017 DG8MG: Added TCP protocol support for the transmission between the Red Pitaya device and the frontend software.
 25.08.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/b3c63cc2b5522cd72057414995a317a34efd6a23
+15.09.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/c8508a7ad0385c3db16322420472a5e787a9a68c
 */
 
 // DG8MG
@@ -85,6 +86,7 @@
 #include <pthread.h>
 #include <termios.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -109,7 +111,7 @@
 #endif
 
 #ifdef CHARLY25AB
-#define SDR_APP_VERSION "20170828"
+#define SDR_APP_VERSION "20170915"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -1867,13 +1869,13 @@ void process_ep2(uint8_t *frame)
 		}
 		else
 		{
-			*tx_level = (int16_t)floor(data * 128.494 + 0.5);
+            *tx_level = (int16_t)floor(data * 125.92 + 0.5);
 		}
 #endif
 
 #ifdef CHARLY25AB
 		data = frame[1];
-		*tx_level = (int16_t)floor(data * 128.494 + 0.5);
+        *tx_level = (int16_t)floor(data * 125.92 + 0.5);
 #endif
 
 		/* configure microphone boost */
