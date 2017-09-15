@@ -26,10 +26,9 @@ int main(int argc, char *argv[])
   struct sched_param param;
   pthread_attr_t attr;
   pthread_t thread;
-  volatile uint32_t *slcr;
   volatile void *cfg, *sts;
-  volatile uint32_t *rx_freq, *tx_freq, *tx_size;
-  volatile int16_t *tx_level;
+  volatile uint32_t *rx_freq, *rx_size;
+  volatile int16_t *tx_level[2];
   volatile uint8_t *rst;
   struct sockaddr_in addr;
   uint32_t command, rate;
@@ -43,25 +42,21 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  slcr = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0xF8000000);
   sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40000000);
   cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40001000);
   rx_data = mmap(NULL, 2*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40002000);
-  rx_freq = mmap(NULL, 16*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40010000);
-  tx_freq = mmap(NULL, 16*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40020000);
+  rx_freq = mmap(NULL, 32*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40020000);
 
   rx_cntr = ((uint16_t *)(sts + 12));
 
   rst = ((uint8_t *)(cfg + 0));
-  tx_level = ((int16_t *)(cfg + 2));
-  tx_size = ((uint32_t *)(cfg + 4));
+  rx_size = ((uint32_t *)(cfg + 4));
+  tx_level[0] = ((int16_t *)(cfg + 8));
+  tx_level[1] = ((int16_t *)(cfg + 10));
 
-  /* set FPGA clock to 143 MHz */
-  slcr[2] = 0xDF0D;
-  slcr[92] = (slcr[92] & ~0x03F03F30) | 0x00100700;
-
-  *tx_level = 32767;
-  *tx_size = 5000 - 1;
+  *tx_level[0] = 32766;
+  *tx_level[1] = 0;
+  *rx_size = 5000 - 1;
 
   start = 10000;
   stop = 60000000;
@@ -126,14 +121,14 @@ int main(int argc, char *argv[])
           break;
         case 2:
           /* set size */
-          if(value < 1 || value > 16384) continue;
+          if(value < 1 || value > 32768) continue;
           size = value;
           break;
         case 3:
           /* set rate */
           if(value < 1 || value > 100000) continue;
           rate = value;
-          *tx_size = 2500 * (rate + 1) - 1;
+          *rx_size = 2500 * (rate + 1) - 1;
           break;
         case 4:
           /* set correction */
@@ -142,10 +137,15 @@ int main(int argc, char *argv[])
           break;
         case 5:
           /* set level */
-          if(value < -32767 || value > 32767) continue;
-          *tx_level = value;
+          if(value < -32766 || value > 32766) continue;
+          *tx_level[0] = value;
           break;
         case 6:
+          /* set level */
+          if(value < -32766 || value > 32766) continue;
+          *tx_level[1] = value;
+          break;
+        case 7:
           /* sweep */
           *rst &= ~3;
           *rst |= 4;
@@ -166,11 +166,10 @@ int main(int argc, char *argv[])
             if(i > 0) freq = start + (stop - start) * (i - 1) / (size - 1);
             freq *= (1.0 + 1.0e-9 * corr);
             *rx_freq = (uint32_t)floor(freq / 125.0e6 * (1<<30) + 0.5);
-            *tx_freq = (uint32_t)floor(freq / 125.0e6 * (1<<30) + 0.5);
           }
           *rst |= 1;
           break;
-        case 7:
+        case 8:
           /* cancel */
           *rst &= ~3;
           *rst |= 4;
@@ -195,7 +194,7 @@ void *read_handler(void *arg)
   int i, j, cntr;
   uint32_t rate = rate_thread;
   uint32_t size = size_thread;
-  float buffer[8];
+  float buffer[4];
 
   i = 0;
   cntr = 0;
@@ -203,7 +202,7 @@ void *read_handler(void *arg)
   {
     if(sock_thread < 0) break;
 
-    if(*rx_cntr < 8)
+    if(*rx_cntr < 4)
     {
       usleep(1000);
       continue;
@@ -211,7 +210,7 @@ void *read_handler(void *arg)
 
     if(i == 0)
     {
-      for(j = 0; j < 8; ++j)
+      for(j = 0; j < 4; ++j)
       {
         buffer[j] = *rx_data;
       }
@@ -219,7 +218,7 @@ void *read_handler(void *arg)
     }
     else
     {
-      for(j = 0; j < 8; ++j)
+      for(j = 0; j < 4; ++j)
       {
         buffer[j] += *rx_data;
       }
@@ -232,12 +231,12 @@ void *read_handler(void *arg)
 
     i = 0;
 
-    for(j = 0; j < 8; ++j)
+    for(j = 0; j < 4; ++j)
     {
       buffer[j] /= rate;
     }
 
-    if(send(sock_thread, buffer + 2, 24, MSG_NOSIGNAL) < 0) break;
+    if(send(sock_thread, buffer, 16, MSG_NOSIGNAL) < 0) break;
   }
 
   return NULL;
