@@ -6,7 +6,7 @@ root_dir=`mktemp -d /tmp/ROOT.XXXXXXXXXX`
 # Choose mirror automatically, depending the geographic and network location
 mirror=http://httpredir.debian.org/debian
 
-distro=jessie
+distro=stretch
 arch=armhf
 
 hostapd_url=https://www.dropbox.com/sh/5fy49wae6xwxa8a/AAAQHa5NkpLYFocaOrrnft-Pa/rtl8192cu/hostapd-armhf?dl=1
@@ -17,11 +17,11 @@ timezone=Europe/Brussels
 # Create partitions
 
 parted -s $device mklabel msdos
-parted -s $device mkpart primary fat16 4MB 16MB
-parted -s $device mkpart primary ext4 16MB 100%
+parted -s $device mkpart primary fat16 4MiB 16MiB
+parted -s $device mkpart primary ext4 16MiB 100%
 
-boot_dev=/dev/`lsblk -lno NAME $device | sed '2!d'`
-root_dev=/dev/`lsblk -lno NAME $device | sed '3!d'`
+boot_dev=/dev/`lsblk -ln -o NAME -x NAME $device | sed '2!d'`
+root_dev=/dev/`lsblk -ln -o NAME -x NAME $device | sed '3!d'`
 
 # Create file systems
 
@@ -63,6 +63,8 @@ cp projects/sdr_transceiver_wspr/transmit-wspr.sh $root_dir/root/
 cp projects/sdr_transceiver_wspr/write-c2-files.c $root_dir/root/
 cp projects/sdr_transceiver_wspr/write-c2-files.cfg $root_dir/root/
 cp projects/sdr_transceiver_wspr/decode-wspr.sh $root_dir/root/
+cp projects/sdr_transceiver_wspr/measure-corr.c $root_dir/root/
+cp projects/sdr_transceiver_wspr/update-corr.sh $root_dir/root/
 cp projects/sdr_transceiver_wspr/gpio-output.c $root_dir/root/
 cp projects/sdr_transceiver_wspr/wspr.cron $root_dir/root/
 cp projects/sdr_transceiver_wspr/README $root_dir/root/
@@ -119,13 +121,14 @@ sed -i "/^# en_US.UTF-8 UTF-8$/s/^# //" etc/locale.gen
 locale-gen
 update-locale LANG=en_US.UTF-8
 
-echo $timezone > etc/timezone
+ln -sf /usr/share/zoneinfo/$timezone etc/localtime
 dpkg-reconfigure --frontend=noninteractive tzdata
 
 apt-get -y install openssh-server ca-certificates ntp ntpdate fake-hwclock \
   usbutils psmisc lsof parted curl vim wpasupplicant hostapd isc-dhcp-server \
   iw firmware-realtek firmware-ralink firmware-atheros firmware-brcm80211 \
-  build-essential subversion libfftw3-dev libconfig-dev parallel ifplugd ntfs-3g
+  build-essential subversion libfftw3-dev libconfig-dev parallel ifplugd \
+  ntfs-3g net-tools less
 
 cd root
 svn co svn://svn.code.sf.net/p/wsjt/wsjt/branches/wsjtx/lib/wsprd
@@ -135,9 +138,9 @@ cd ..
 
 ln -sf /root/wspr.cron etc/cron.d/wspr
 
-sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' etc/ssh/sshd_config
+sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' etc/ssh/sshd_config
 
-touch etc/udev/rules.d/75-persistent-net-generator.rules
+touch etc/udev/rules.d/80-net-setup-link.rules
 
 cat <<- EOF_CAT > etc/network/interfaces.d/eth0
 iface eth0 inet dhcp
