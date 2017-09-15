@@ -1,5 +1,5 @@
 project=sdr_transceiver_hpsdr
-project1=stemlab_sdr_transceiver_hpsdr
+project1=hamlab_sdr_transceiver_hpsdr
 server=sdr-transceiver-hpsdr
 
 cp -a projects/$project/bazaar $project1
