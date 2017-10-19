@@ -25,14 +25,14 @@ const char *rp_app_desc()
 int rp_app_init()
 {
   fprintf(stderr, "Starting HPSDR transceiver server.\n");
-  system("/opt/redpitaya/www/apps/sdr_transceiver_hpsdr/start.sh");
+  system("/opt/redpitaya/www/apps/hamlab_sdr_transceiver_hpsdr/start.sh");
   return 0;
 }
 
 int rp_app_exit(void)
 {
   fprintf(stderr, "Stopping HPSDR transceiver server.\n");
-  system("/opt/redpitaya/www/apps/sdr_transceiver_hpsdr/stop.sh");
+  system("/opt/redpitaya/www/apps/hamlab_sdr_transceiver_hpsdr/stop.sh");
   return 0;
 }
 
