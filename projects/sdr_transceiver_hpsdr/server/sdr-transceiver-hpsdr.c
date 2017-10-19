@@ -36,6 +36,7 @@
 06.08.2017 DG8MG: Added TCP protocol support for the transmission between the Red Pitaya device and the frontend software.
 25.08.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/b3c63cc2b5522cd72057414995a317a34efd6a23
 15.09.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/c8508a7ad0385c3db16322420472a5e787a9a68c
+19.10.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/892e9b941f8a4d21bb6f04359836de79e4bdf3e4
 */
 
 // DG8MG
@@ -111,7 +112,7 @@
 #endif
 
 #ifdef CHARLY25AB
-#define SDR_APP_VERSION "20170915"
+#define SDR_APP_VERSION "20171019"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -279,6 +280,8 @@ ssize_t i2c_write_addr_data16(int fd, uint8_t addr, uint16_t data)
 	return write(fd, buffer, 3);
 }
 
+uint32_t freq_data[3] = {0, 0, 0};
+
 #ifndef CHARLY25AB
 ssize_t i2c_write_addr_data24(int fd, uint8_t addr, uint32_t data)
 {
@@ -302,8 +305,6 @@ uint16_t alex_data_rx = 0;
 uint16_t alex_data_tx = 0;
 uint16_t alex_data_0 = 0;
 uint16_t alex_data_1 = 0;
-
-uint32_t freq_data[3] = {0, 0, 0};
 
 /* calculate lookup table from drive scale value to 0.5 dB attenuation units */
 void calc_log_lookup()
@@ -1197,7 +1198,7 @@ int main(int argc, char *argv[])
 	*tx_size = size;
 
 	/* set default tx level */
-	*tx_level = 32766;
+	*tx_level = 32110;
 	/* set ps level */
 	*ps_level = 23080;
 	/* set default tx mux channel */
@@ -1500,7 +1501,7 @@ int main(int argc, char *argv[])
 
 void process_ep2(uint8_t *frame)
 {
-	uint32_t freq, c25_rx1_freq, c25_rx2_freq, c25_rx3_freq, c25_rx4_freq;
+	uint32_t freq, c25_rx1_freq, c25_rx2_freq;
 	uint16_t data;
 	uint32_t data32;
 	uint8_t ptt, preamp, att, boost;
@@ -1654,15 +1655,19 @@ void process_ep2(uint8_t *frame)
 		if (c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
 		*tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
 
-		if (c25lc_trx_present)
+		if (freq_data[0] != c25_tx_freq)
 		{
-			c25_i2c_data = c25lc_switch_tx_lpf();
-		}
-		else if (c25ab_trx_present)
-		{
-			c25_i2c_data = c25ab_switch_tx_lpf();
-		}
+			freq_data[0] = c25_tx_freq;
 
+			if (c25lc_trx_present)
+			{
+				c25_i2c_data = c25lc_switch_tx_lpf();
+			}
+			else if (c25ab_trx_present)
+			{
+				c25_i2c_data = c25ab_switch_tx_lpf();
+			}
+		}
 		break;
 #endif
 
@@ -1704,17 +1709,22 @@ void process_ep2(uint8_t *frame)
 		if (c25_rx1_freq < freq_min || c25_rx1_freq > freq_max) break;
 		*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 125.0e6 * (1 << 30) + 0.5);
 		if (rx_sync_data) *rx_freq[1] = *rx_freq[0];
-
-		if (rx_sync_data)
+		
+		if (freq_data[1] != c25_rx1_freq)
 		{
-			/* reset first two los */
-			*lo_rst &= ~3;
-			*lo_rst |= 3;
-		}
+			freq_data[1] = c25_rx1_freq;
 
-		if (c25_rx1_bpf_i2c_present)
-		{
-			c25_switch_rx_bpf(C25_RX1_BPF_ADDR, c25_rx1_freq);
+			if (rx_sync_data)
+			{
+				/* reset rx los */
+				*lo_rst &= ~3;
+				*lo_rst |= 3;
+			}
+
+			if (c25_rx1_bpf_i2c_present)
+			{
+				c25_switch_rx_bpf(C25_RX1_BPF_ADDR, c25_rx1_freq);
+			}
 		}
 		break;
 #endif      
@@ -1765,9 +1775,14 @@ void process_ep2(uint8_t *frame)
 		if (c25_rx2_freq < freq_min || c25_rx2_freq > freq_max) break;
 		*rx_freq[1] = (uint32_t)floor(c25_rx2_freq / 125.0e6 * (1 << 30) + 0.5);
 
-		if (c25_rx2_bpf_i2c_present)
+		if (freq_data[2] != c25_rx2_freq)
 		{
-			c25_switch_rx_bpf(C25_RX2_BPF_ADDR, c25_rx2_freq);
+			freq_data[2] = c25_rx2_freq;
+
+			if (c25_rx2_bpf_i2c_present)
+			{
+				c25_switch_rx_bpf(C25_RX2_BPF_ADDR, c25_rx2_freq);
+			}
 		}
 		break;
 #endif  
