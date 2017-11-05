@@ -118,22 +118,22 @@
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
 #define HAMLAB_AUDIO_I2C_DEVICE "/dev/i2c-6"
 
-// I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0 
+// I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0
 const uint8_t AUDIO_CODEC_ADDR = 0x1A;
 
-// I2C address of the Charly 25 trx frontend 
+// I2C address of the Charly 25 trx frontend
 const uint8_t C25_ADDR = 0x20;
 
-// I2C address of the first Charly 25 receiver BPF board 
+// I2C address of the first Charly 25 receiver BPF board
 const uint8_t C25_RX1_BPF_ADDR = 0x21;
 
-// I2C address of the second Charly 25 receiver BPF board 
+// I2C address of the second Charly 25 receiver BPF board
 const uint8_t C25_RX2_BPF_ADDR = 0x22;
 
-// I2C address of the Charly 25 TRX board ID chip 
+// I2C address of the Charly 25 TRX board ID chip
 const uint8_t C25_TRX_ID_ADDR = 0x1A;
 
-// C25 filter frequencies 
+// C25 filter frequencies
 const uint32_t C25_6M_LOW_FREQ = 49995000;
 const uint32_t C25_6M_HIGH_FREQ = 54005000;
 
@@ -232,7 +232,7 @@ uint32_t i2c_ard_txatt_data = 0; /* tx attenuation and oddments  */
 uint16_t i2c_ard_rxatt_data = 0; /* rx attenuation */
 
 uint8_t log_table_lookup[256]; /* lookup table from linear scale to
-                                  6 bit / 0.5 dB attenuation */
+								  6 bit / 0.5 dB attenuation */
 #endif
 
 uint8_t i2c_boost_data = 0;
@@ -530,7 +530,7 @@ void c25_detect_hardware(void)
 				// set pins for input
 				i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
 
-				// address the input port register 
+				// address the input port register
 				i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
 
 				// read the Charly 25 TRX board ID and model
@@ -540,27 +540,27 @@ void c25_detect_hardware(void)
 				if (read(i2c_fd, input_register, 1) == 1)
 				{
 					C25_TRX_ID = input_register[0];
-                    
-                    switch (C25_TRX_ID)
-                    {
-                        case 128:
-                        case 129:
-                        c25lc_trx_present = true;
-                        break;
-                        
-                        case 130:
-                        c25ab_trx_present = true;
-                        break;
-                        
-                        default:
-                        fprintf(stderr, "Charly 25 TRX board with unknown ID found!\nPrototype present?\n");
-#ifdef CHARLY25LC                       
-                        fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
+
+					switch (C25_TRX_ID)
+					{
+						case 128:
+						case 129:
+						c25lc_trx_present = true;
+						break;
+
+						case 130:
+						c25ab_trx_present = true;
+						break;
+
+						default:
+						fprintf(stderr, "Charly 25 TRX board with unknown ID found!\nPrototype present?\n");
+#ifdef CHARLY25LC
+						fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
 #else
-                        fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
+						fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
 #endif
-                        break;
-                    }
+						break;
+					}
 				}
 			}
 			// If no ID chip is present set the board model via pre-processor #define
@@ -660,22 +660,22 @@ void c25_detect_hardware(void)
 				if (i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x1e, 0x00) >= 0)
 				{
 					i2c_codec = 1;
-					// set power down register 
+					// set power down register
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0c, 0x51);
-					// reset activate register 
+					// reset activate register
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x12, 0x00);
-					// set volume to -10 dB 
+					// set volume to -10 dB
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x04, 0x6f);
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x06, 0x6f);
-					// set analog audio path register 
+					// set analog audio path register
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x08, 0x14);
-					// set digital audio path register 
+					// set digital audio path register
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0a, 0x00);
-					// set format register 
+					// set format register
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0e, 0x42);
-					// set activate register 
+					// set activate register
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x12, 0x01);
-					// set power down register 
+					// set power down register
 					i2c_write_addr_data8(hamlab_audio_i2c_fd, 0x0c, 0x41);
 				}
 				else
@@ -695,27 +695,27 @@ void c25_detect_hardware(void)
 	}
 	else if (ioctl(i2c_fd, I2C_SLAVE, AUDIO_CODEC_ADDR) >= 0)
 	{
-		// reset 
-		// Check if a Charly 25 stand-alone audio codec is present 
+		// reset
+		// Check if a Charly 25 stand-alone audio codec is present
 		if (i2c_write_addr_data8(i2c_fd, 0x1e, 0x00) >= 0)
 		{
 			i2c_codec = 1;
-			// set power down register 
+			// set power down register
 			i2c_write_addr_data8(i2c_fd, 0x0c, 0x51);
-			// reset activate register 
+			// reset activate register
 			i2c_write_addr_data8(i2c_fd, 0x12, 0x00);
-			// set volume to -10 dB 
+			// set volume to -10 dB
 			i2c_write_addr_data8(i2c_fd, 0x04, 0x6f);
 			i2c_write_addr_data8(i2c_fd, 0x06, 0x6f);
-			// set analog audio path register 
+			// set analog audio path register
 			i2c_write_addr_data8(i2c_fd, 0x08, 0x14);
-			// set digital audio path register 
+			// set digital audio path register
 			i2c_write_addr_data8(i2c_fd, 0x0a, 0x00);
-			// set format register 
+			// set format register
 			i2c_write_addr_data8(i2c_fd, 0x0e, 0x42);
-			// set activate register 
+			// set activate register
 			i2c_write_addr_data8(i2c_fd, 0x12, 0x01);
-			// set power down register 
+			// set power down register
 			i2c_write_addr_data8(i2c_fd, 0x0c, 0x41);
 		}
 		else
@@ -744,16 +744,16 @@ uint16_t c25_switch_att_pre_ant(uint8_t frame_3)
 {
 	static uint16_t c25_att_pre_ant_i2c_data = 0;
 
-	// Wipe bits that might get changed 
-	// first and second f are LPFs 
+	// Wipe bits that might get changed
+	// first and second f are LPFs
 	uint16_t c25_att_pre_ant_i2c_new_data = c25_i2c_data & 0xffb0;
 
-	// Attenuator 
+	// Attenuator
 	c25_att_pre_ant_i2c_new_data |= frame_3 & 3;  // C3: Bit 0-1 - Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
 
 	/*
- 	DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
- 	C3
+	DG8MG: On Charly 25AB hardware C3 bit 3 is used for the switching of the second preamp
+	C3
 	0 0 0 0 0 0 0 0
 	| | | | | | | |
 	| | | | | | + +------------ Alex Attenuator (00 = 0dB, 01 = 10dB, 10 = 20dB, 11 = 30dB)
@@ -764,10 +764,10 @@ uint16_t c25_switch_att_pre_ant(uint8_t frame_3)
 	+ ------------------------- Alex Rx out (0 = off, 1 = on). Set if Alex Rx Antenna > 0.
 	*/
 
-	// Activate preamp one and two as expected from the frontend software (f.e. PowerSDR Charly 25 / HAMlab Edition) 
+	// Activate preamp one and two as expected from the frontend software (f.e. PowerSDR Charly 25 / HAMlab Edition)
 	c25_att_pre_ant_i2c_new_data |= frame_3 & 12;  // C3: Bit 2 - Preamp 1 On/Off (0 = Off, 1 = On), Bit 3 - Preamp 2 On/Off (0 = Off, 1 = On)
 
-	// Activate antenna 1 or 2 as expected from the frontend software 
+	// Activate antenna 1 or 2 as expected from the frontend software
 	c25_att_pre_ant_i2c_new_data |= (frame_3 & 32) << 1;  // C3: Bit 5 and 6 - Antenna 1 - 3 (00 = Antenna 1, 01 = Antenna 2, 10 = Antenna 3, 11 = Transverter)
 
 	if (c25_att_pre_ant_i2c_new_data != c25_att_pre_ant_i2c_data)
@@ -778,7 +778,7 @@ uint16_t c25_switch_att_pre_ant(uint8_t frame_3)
 
 #ifdef DEBUG_ATT
 		fprintf(stderr, "ATT, PRE and ANT bitmask in hex: %x\n", c25_att_pre_ant_i2c_data & 0x004f);
-#endif  
+#endif
 	}
 
 	return c25_att_pre_ant_i2c_data;
@@ -788,40 +788,40 @@ uint16_t c25ab_switch_tx_lpf(void)
 {
 	static uint16_t c25ab_tx_lpf_i2c_data = 0;
 
-	// Wipe bits that might get changed 
+	// Wipe bits that might get changed
 	uint16_t c25ab_tx_lpf_i2c_new_data = c25_i2c_data & 0x004f;
 
-	// Switch LPF depending on TX frequency 
-	if (C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ)  // 6m LPF 
+	// Switch LPF depending on TX frequency
+	if (C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ)  // 6m LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 8;
 	}
-	else if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || (C25_12M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_12M_LOW_FREQ))  // 10/12m LPF 
+	else if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || (C25_12M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_12M_LOW_FREQ))  // 10/12m LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 9;
 	}
-	else if ((C25_15M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_15M_LOW_FREQ) || (C25_17M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_17M_LOW_FREQ))  // 15/17m LPF 
+	else if ((C25_15M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_15M_LOW_FREQ) || (C25_17M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_17M_LOW_FREQ))  // 15/17m LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 10;
 	}
-	else if (C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ)  // 20 LPF 
+	else if (C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ)  // 20 LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 11;
 	}
-	else if ((C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ) || (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ))  // 30/40m LPF 
+	else if ((C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ) || (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ))  // 30/40m LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 12;
 	}
-	else if ((C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ) || (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ))  // 60/80m LPF 
+	else if ((C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ) || (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ))  // 60/80m LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 13;
 	}
-	else if (C25_160M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_160M_LOW_FREQ)  // 160m LPF 
+	else if (C25_160M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_160M_LOW_FREQ)  // 160m LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 14;
 	}
 
-	// Turn PTT and PA only on if a LPF is active 
+	// Turn PTT and PA only on if a LPF is active
 	if ((c25ab_tx_lpf_i2c_new_data & 0x7f00) != 0)
 	{
 		c25ab_tx_lpf_i2c_new_data |= ((c25_mox & 1) | (tx_mux_data & 1)) << 4;  // C0: Bit 0 - MOX (1 = active, 0 = inactive)
@@ -838,12 +838,12 @@ uint16_t c25ab_switch_tx_lpf(void)
 		fprintf(stderr, "LPF bitmask in hex: %x\n", (c25ab_tx_lpf_i2c_new_data & 0x7f00) >> 8);
 		fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_new_data & 0x0030) >> 4);
 		fprintf(stderr, "c25ab_tx_lpf_i2c_new_data in hex: %x\n", c25ab_tx_lpf_i2c_new_data);
-#endif  
+#endif
 
 #ifdef DEBUG_PA
 		fprintf(stderr, "gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
 		fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_data & 0x0030) >> 4);
-#endif 
+#endif
 	}
 
 	return c25ab_tx_lpf_i2c_data;
@@ -853,36 +853,36 @@ uint16_t c25lc_switch_tx_lpf(void)
 {
 	static uint16_t c25lc_tx_lpf_i2c_data = 0;
 
-	// Wipe bits that might get changed 
+	// Wipe bits that might get changed
 	uint16_t c25lc_tx_lpf_i2c_new_data = c25_i2c_data & 0x00ff;
 
-	// Switch LPF depending on TX frequency 
-	if (C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ)  // 10m LPF 
+	// Switch LPF depending on TX frequency
+	if (C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ)  // 10m LPF
 	{
 		c25lc_tx_lpf_i2c_new_data |= 1 << 8;
 	}
-	else if (C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ)  // 20m LPF 
+	else if (C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ)  // 20m LPF
 	{
 		c25lc_tx_lpf_i2c_new_data |= 1 << 9;
 	}
-	else if (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ)  // 40m LPF 
+	else if (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ)  // 40m LPF
 	{
 		c25lc_tx_lpf_i2c_new_data |= 1 << 10;
 	}
 
 #ifdef CHARLY25LC_60M_BAND
-	else if (C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ)  // 40m LPF on 60m band 
+	else if (C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ)  // 40m LPF on 60m band
 	{
 		c25lc_tx_lpf_i2c_new_data |= 1 << 10;
 	}
 #endif
 
-	else if (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ)  // 80m LPF 
+	else if (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ)  // 80m LPF
 	{
 		c25lc_tx_lpf_i2c_new_data |= 1 << 11;
 	}
 
-	// Turn PTT and PA only on if a LPF is active 
+	// Turn PTT and PA only on if a LPF is active
 	if ((c25lc_tx_lpf_i2c_new_data & 0x0f00) != 0)
 	{
 		c25lc_tx_lpf_i2c_new_data |= ((c25_mox & 1) | (tx_mux_data & 1)) << 12;  // C0: Bit 0 - MOX (1 = active, 0 = inactive)
@@ -893,7 +893,7 @@ uint16_t c25lc_switch_tx_lpf(void)
 	fprintf(stderr, "LPF bitmask in hex: %x\n", (c25lc_tx_lpf_i2c_new_data & 0x0f00) >> 8);
 	fprintf(stderr, "PA and PTT state %d\n", (c25lc_tx_lpf_i2c_new_data & 0x3000) >> 12);
 	fprintf(stderr, "c25lc_tx_lpf_i2c_new_data in hex: %x\n", c25lc_tx_lpf_i2c_new_data);
-#endif  
+#endif
 
 	if (c25lc_tx_lpf_i2c_new_data != c25lc_tx_lpf_i2c_data)
 	{
@@ -904,7 +904,7 @@ uint16_t c25lc_switch_tx_lpf(void)
 #ifdef DEBUG_PA
 		fprintf(stderr, "gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
 		fprintf(stderr, "PA and PTT state %d\n", (c25lc_tx_lpf_i2c_data & 0x3000) >> 12);
-#endif   
+#endif
 	}
 	return c25lc_tx_lpf_i2c_data;
 }
@@ -913,55 +913,55 @@ ssize_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
 {
 	static uint16_t c25_rx_bpf_i2c_data = 0;
 
-	// Wipe bits that might get changed in this frame 
+	// Wipe bits that might get changed in this frame
 	uint16_t c25_rx_bpf_i2c_new_data = 0x0000;
 
-	// Switch BPF depending on RX frequency 
-	if (C25_6M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_6M_LOW_FREQ)  // 6m BPF 
+	// Switch BPF depending on RX frequency
+	if (C25_6M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_6M_LOW_FREQ)  // 6m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 12;
 	}
-	else if (C25_10M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_10M_LOW_FREQ)  // 10m BPF 
+	else if (C25_10M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_10M_LOW_FREQ)  // 10m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 13;
 	}
-	else if (C25_12M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_12M_LOW_FREQ)  // 12m BPF 
+	else if (C25_12M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_12M_LOW_FREQ)  // 12m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 14;
 	}
-	else if (C25_15M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_15M_LOW_FREQ)  // 15m BPF 
+	else if (C25_15M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_15M_LOW_FREQ)  // 15m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 15;
 	}
-	else if (C25_17M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_17M_LOW_FREQ)  // 17m BPF 
+	else if (C25_17M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_17M_LOW_FREQ)  // 17m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 0;
 	}
-	else if (C25_20M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_20M_LOW_FREQ)  // 20m BPF 
+	else if (C25_20M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_20M_LOW_FREQ)  // 20m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 1;
 	}
-	else if (C25_30M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_30M_LOW_FREQ)  // 30m BPF 
+	else if (C25_30M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_30M_LOW_FREQ)  // 30m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 2;
 	}
-	else if (C25_40M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_40M_LOW_FREQ)  // 40m BPF 
+	else if (C25_40M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_40M_LOW_FREQ)  // 40m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 3;
 	}
-	else if (C25_60M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_60M_LOW_FREQ)  // 60m BPF 
+	else if (C25_60M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_60M_LOW_FREQ)  // 60m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 4;
 	}
-	else if (C25_80M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_80M_LOW_FREQ) // 80m BPF 
+	else if (C25_80M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_80M_LOW_FREQ) // 80m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 5;
 	}
-	else if (C25_160M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_160M_LOW_FREQ) // 160m BPF 
+	else if (C25_160M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_160M_LOW_FREQ) // 160m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 6;
 	}
-	else  // Default filter for LF or outside of the HAM bands 
+	else  // Default filter for LF or outside of the HAM bands
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 7;
 	}
@@ -971,7 +971,7 @@ ssize_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
 		c25_rx_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
 		ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
 
-#ifdef DEBUG_BPF 
+#ifdef DEBUG_BPF
 		fprintf(stderr, "BPF frequency: %d - BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
 #endif
 
@@ -1012,7 +1012,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef CHARLY25AB
-	// Detect the present Charly 25 and HAMlab hardware 
+	// Detect the present Charly 25 and HAMlab hardware
 	c25_detect_hardware();
 #endif
 
@@ -1282,33 +1282,33 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-#ifdef CHARLY25_TCP    
-    if ((sock_TCP_Server = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        perror("socket tcp");
-        return EXIT_FAILURE;
-    }
+#ifdef CHARLY25_TCP
+	if ((sock_TCP_Server = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	{
+		perror("socket tcp");
+		return EXIT_FAILURE;
+	}
 
 #ifdef DEBUG_PROT
-    fprintf(stderr, "RP <--> PC: sock_TCP_Server: %d\n", sock_TCP_Server);
+	fprintf(stderr, "RP <--> PC: sock_TCP_Server: %d\n", sock_TCP_Server);
 #endif
-               
-    setsockopt(sock_TCP_Server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes, sizeof(yes));
-    
-    int sndbufsize = 0xffff;
-    int rcvbufsize = 0xffff;
-    setsockopt(sock_TCP_Server, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbufsize, sizeof(int));
+
+	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes, sizeof(yes));
+
+	int sndbufsize = 0xffff;
+	int rcvbufsize = 0xffff;
+	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbufsize, sizeof(int));
 	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbufsize, sizeof(int));
 
-    if (bind(sock_TCP_Server, (struct sockaddr *)&addr_ep2, sizeof(addr_ep2)) < 0)
-    {
-        perror("bind tcp");
-        return EXIT_FAILURE;
-    }
+	if (bind(sock_TCP_Server, (struct sockaddr *)&addr_ep2, sizeof(addr_ep2)) < 0)
+	{
+		perror("bind tcp");
+		return EXIT_FAILURE;
+	}
 	
-    listen(sock_TCP_Server, 1024);
+	listen(sock_TCP_Server, 1024);
 
-    fprintf(stderr, "RP <--> PC: Listening for TCP client connection request\n");
+	fprintf(stderr, "RP <--> PC: Listening for TCP client connection request\n");
 #endif
 
 	pthread_attr_init(&attr);
@@ -1343,16 +1343,16 @@ int main(int argc, char *argv[])
 		ts.tv_nsec = 1000000;
 
 #ifdef CHARLY25_TCP
-        if (sock_TCP_Client)
-        {
-            size = recvmmsg(sock_TCP_Client, datagram, 8, 0, &ts);
-        }
-        else
+		if (sock_TCP_Client)
+		{
+			size = recvmmsg(sock_TCP_Client, datagram, 8, 0, &ts);
+		}
+		else
 #endif
-        {
-            size = recvmmsg(sock_ep2, datagram, 8, 0, &ts);
-        }
-        
+		{
+			size = recvmmsg(sock_ep2, datagram, 8, 0, &ts);
+		}
+
 		if (size < 0 && errno != EAGAIN)
 		{
 			perror("recvfrom");
@@ -1363,13 +1363,13 @@ int main(int argc, char *argv[])
 		{
 			memcpy(&code, buffer[i], 4);
 
-            switch (code)
-            {
-            // PC to Red Pitaya transmission via process_ep2
-                case 0x0201feef:
-            
+			switch (code)
+			{
+			// PC to Red Pitaya transmission via process_ep2
+				case 0x0201feef:
+
 #ifdef DEBUG_PROT
-                fprintf(stderr, "PC -> RP: data transmission via process_ep2 / code: 0x%08x\n", code);
+				fprintf(stderr, "PC -> RP: data transmission via process_ep2 / code: 0x%08x\n", code);
 #endif
 				if (!tx_mux_data)
 				{
@@ -1408,63 +1408,63 @@ int main(int argc, char *argv[])
 				process_ep2(buffer[i] + 523);
 				break;
 
-                // respond to an incoming Metis detection request
-                case 0x0002feef:
-            
+				// respond to an incoming Metis detection request
+				case 0x0002feef:
+
 #ifdef DEBUG_PROT
-                fprintf(stderr, "RP -> PC: respond to an incoming Metis detection request / code: 0x%08x\n", code);
-#endif 
+				fprintf(stderr, "RP -> PC: respond to an incoming Metis detection request / code: 0x%08x\n", code);
+#endif
 				reply[2] = 2 + active_thread;
 				memset(buffer[i], 0, 60);
 				memcpy(buffer[i], reply, 11);
 				sendto(sock_ep2, buffer[i], 60, 0, (struct sockaddr *)&addr_from[i], sizeof(addr_from[i]));
 				break;
-            
-                // stop the Red Pitaya to PC transmission via handler_ep6
-                case 0x0004feef:
-            
+
+				// stop the Red Pitaya to PC transmission via handler_ep6
+				case 0x0004feef:
+
 #ifdef DEBUG_PROT
-                fprintf(stderr, "RP -> PC: stop the transmission via handler_ep6 / code: 0x%08x\n", code);
-#endif           
+				fprintf(stderr, "RP -> PC: stop the transmission via handler_ep6 / code: 0x%08x\n", code);
+#endif
 				enable_thread = 0;
 				while (active_thread) usleep(1000);
 				break;
-            
-                // start the Red Pitaya to PC transmission via handler_ep6
+
+				// start the Red Pitaya to PC transmission via handler_ep6
 #ifdef CHARLY25_TCP
-                case 0x1104feef:
+				case 0x1104feef:
 
 #ifdef DEBUG_PROT
-                fprintf(stderr, "RP <--> PC: Connect the TCP client to the server / code: 0x%08x\n", code);
+				fprintf(stderr, "RP <--> PC: Connect the TCP client to the server / code: 0x%08x\n", code);
 #endif
-                if (sock_TCP_Client <= 0)
-                {                   
-                    if((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) < 0)
-                    {
-                        fprintf(stderr, "*** ERROR TCP accept ***\n");
-                        perror("accept");
-                        return EXIT_FAILURE;
-                    }
+				if (sock_TCP_Client <= 0)
+				{
+					if((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) < 0)
+					{
+						fprintf(stderr, "*** ERROR TCP accept ***\n");
+						perror("accept");
+						return EXIT_FAILURE;
+					}
 
-                    fprintf(stderr, "RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
-                }
+					fprintf(stderr, "RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
+				}
 #endif
 
-                case 0x0104feef:
-                case 0x0204feef:
-                case 0x0304feef:
-                
+				case 0x0104feef:
+				case 0x0204feef:
+				case 0x0304feef:
+
 #ifdef DEBUG_PROT
-                fprintf(stderr, "RP <--> PC: start the handler_ep6 thread / code: 0x%08x\n", code);
-#endif               
-            
-       			enable_thread = 0;
+				fprintf(stderr, "RP <--> PC: start the handler_ep6 thread / code: 0x%08x\n", code);
+#endif
+
+				enable_thread = 0;
 				while (active_thread) usleep(1000);
 				memset(&addr_ep6, 0, sizeof(addr_ep6));
 				addr_ep6.sin_family = AF_INET;
 				addr_ep6.sin_addr.s_addr = addr_from[i].sin_addr.s_addr;
 				addr_ep6.sin_port = addr_from[i].sin_port;
-                
+
 				enable_thread = 1;
 				active_thread = 1;
 				rx_sync_data = 0;
@@ -1483,17 +1483,17 @@ int main(int argc, char *argv[])
 	}
 
 	close(sock_ep2);
-    
+
 #ifdef CHARLY25_TCP
-    if (sock_TCP_Client)
-    {
-        close(sock_TCP_Client);
-    }
-    
-    if (sock_TCP_Server)
-    {        
-        close(sock_TCP_Server);
-    }
+	if (sock_TCP_Client)
+	{
+		close(sock_TCP_Client);
+	}
+
+	if (sock_TCP_Server)
+	{
+		close(sock_TCP_Server);
+	}
 #endif
 
 	return EXIT_SUCCESS;
@@ -1514,7 +1514,7 @@ void process_ep2(uint8_t *frame)
 		receivers = ((frame[4] >> 3) & 7) + 1;  // C4: Bit 3-5 - Number of Receivers (000 = 1, 111 = 8)
 
 #ifdef DEBUG_PROT
-        fprintf(stderr, "PC -> RP: number of receivers: %u\n", receivers);
+		fprintf(stderr, "PC -> RP: number of receivers: %u\n", receivers);
 #endif
 
 		data = (frame[4] >> 7) & 1;
@@ -1562,7 +1562,7 @@ void process_ep2(uint8_t *frame)
 		}
 
 #ifdef CHARLY25AB
-		// switch the attenuators, preamps and antenna on the Charly 25 board 
+		// switch the attenuators, preamps and antenna on the Charly 25 board
 		c25_i2c_data = c25_switch_att_pre_ant(frame[3]);
 		break;
 #endif
@@ -1637,14 +1637,14 @@ void process_ep2(uint8_t *frame)
 			}
 		}
 
-      break;
+	  break;
 #endif
 
-	case 2:  // C0: Bit 1-4 - Transmitter - C0: Bit 0 - MOX -> 0 = inactive 
+	case 2:  // C0: Bit 1-4 - Transmitter - C0: Bit 0 - MOX -> 0 = inactive
 	case 3:  // C0: Bit 1-4 - Transmitter - C0: Bit 0 - MOX -> 1 = active
-        /* set tx phase increment */
+		/* set tx phase increment */
 
-#ifdef CHARLY25AB    
+#ifdef CHARLY25AB
 		c25_mox = frame[0] & 1;
 		c25_tx_freq = ntohl(*(uint32_t *)(frame + 1));
 
@@ -1655,19 +1655,15 @@ void process_ep2(uint8_t *frame)
 		if (c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
 		*tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
 
-		if (freq_data[0] != c25_tx_freq)
+		if (c25lc_trx_present)
 		{
-			freq_data[0] = c25_tx_freq;
-
-			if (c25lc_trx_present)
-			{
-				c25_i2c_data = c25lc_switch_tx_lpf();
-			}
-			else if (c25ab_trx_present)
-			{
-				c25_i2c_data = c25ab_switch_tx_lpf();
-			}
+			c25_i2c_data = c25lc_switch_tx_lpf();
 		}
+		else if (c25ab_trx_present)
+		{
+			c25_i2c_data = c25ab_switch_tx_lpf();
+		}
+
 		break;
 #endif
 
@@ -1697,7 +1693,7 @@ void process_ep2(uint8_t *frame)
 
 	case 4:  // C0: Bit 1-4 - Receiver 1 - C0: Bit 0 - MOX -> 0 = inactive
 	case 5:  // C0: Bit 1-4 - Receiver 1 - C0: Bit 0 - MOX -> 1 = active
-        /* set rx phase increment */
+		/* set rx phase increment */
 
 #ifdef CHARLY25AB
 		c25_rx1_freq = ntohl(*(uint32_t *)(frame + 1));
@@ -1727,7 +1723,7 @@ void process_ep2(uint8_t *frame)
 			}
 		}
 		break;
-#endif      
+#endif
 
 #ifndef CHARLY25AB
 		freq = ntohl(*(uint32_t *)(frame + 1));
@@ -1762,7 +1758,7 @@ void process_ep2(uint8_t *frame)
 
 	case 6:  // C0: Bit 1-4 - Receiver 2 - C0: Bit 0 - MOX -> 0 = inactive
 	case 7:  // C0: Bit 1-4 - Receiver 2 - C0: Bit 0 - MOX -> 1 = active
-        /* set rx phase increment */
+		/* set rx phase increment */
 		if (rx_sync_data) break;
 
 #ifdef CHARLY25AB
@@ -1785,7 +1781,7 @@ void process_ep2(uint8_t *frame)
 			}
 		}
 		break;
-#endif  
+#endif
 
 
 #ifndef CHARLY25AB
@@ -1884,13 +1880,13 @@ void process_ep2(uint8_t *frame)
 		}
 		else
 		{
-            *tx_level = (int16_t)floor(data * 125.92 + 0.5);
+			*tx_level = (int16_t)floor(data * 125.92 + 0.5);
 		}
 #endif
 
 #ifdef CHARLY25AB
 		data = frame[1];
-        *tx_level = (int16_t)floor(data * 125.92 + 0.5);
+		*tx_level = (int16_t)floor(data * 125.92 + 0.5);
 #endif
 
 		/* configure microphone boost */
@@ -2062,7 +2058,7 @@ void *handler_ep6(void *arg)
 	if (c25_rx1_bpf_i2c_present) header[5] = 146;
 	if (c25_rx2_bpf_i2c_present) header[5] = 147;
 
-	// C3 - Penelope (transmitter) software serial number (0 to 255) – set to 17 by default  
+	// C3 - Penelope (transmitter) software serial number (0 to 255) – set to 17 by default
 	header[6] = C25_TRX_ID;
 
 	// C4 - Ozy/Magister or Metis (Ethernet interface) or Hermes software serial number (0 to 255) - set to 21 by default
@@ -2197,24 +2193,24 @@ void *handler_ep6(void *arg)
 				if (i2c_codec) memcpy(pointer - 2, &audio[(k++) >> rate], 2);
 			}
 		}
- 
+
 #ifdef CHARLY25_TCP
-        if (sock_TCP_Client)
-        {
-            if (sendmmsg(sock_TCP_Client, datagram, m, 0) < 0)
-            {
-                fprintf(stderr, "RP -> PC: TCP sendmmsg error occurred at sequence number: %u !\n", counter);
-            }
-        }
-        else
+		if (sock_TCP_Client)
+		{
+			if (sendmmsg(sock_TCP_Client, datagram, m, 0) < 0)
+			{
+				fprintf(stderr, "RP -> PC: TCP sendmmsg error occurred at sequence number: %u !\n", counter);
+			}
+		}
+		else
 #endif
-        {
-            sendmmsg(sock_ep2, datagram, m, 0);
-        }
-        
-#ifdef DEBUG_PROT  
-        fprintf(stderr, "RP -> PC: Sequence number: %u and %u further sequences from %u receivers sent!\n", counter, m-1, receivers);
-#endif 
+		{
+			sendmmsg(sock_ep2, datagram, m, 0);
+		}
+
+#ifdef DEBUG_PROT
+		fprintf(stderr, "RP -> PC: Sequence number: %u and %u further sequences from %u receivers sent!\n", counter, m-1, receivers);
+#endif
 	}
 	active_thread = 0;
 	return NULL;
