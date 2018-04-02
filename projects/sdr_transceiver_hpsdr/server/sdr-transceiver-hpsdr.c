@@ -38,6 +38,8 @@
 15.09.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/c8508a7ad0385c3db16322420472a5e787a9a68c
 19.10.2017 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/892e9b941f8a4d21bb6f04359836de79e4bdf3e4
 15.03.2018 DG8MG: Added support for the LPFs on the Charly 25PP board.
+19.03.2018 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/4c9c20971f696f330b5e9742aff56dee70f5fb0b
+03.04.2018 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/fd78f4169a19919dc59360f9eef0ffc850d3f226
 */
 
 // DG8MG
@@ -116,7 +118,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20180315"
+#define SDR_APP_VERSION "20180403"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -172,7 +174,7 @@ const uint32_t C25_160M_LOW_FREQ = 1795000;
 const uint32_t C25_160M_HIGH_FREQ = 2005000;
 #endif
 
-volatile uint32_t *rx_freq[2], *tx_freq, *alex, *tx_mux, *dac_freq, *dac_mux;
+volatile uint32_t *rx_freq[2], *tx_freq, *alex, *tx_mux, *dac_freq;
 volatile uint16_t *rx_rate, *rx_cntr, *tx_cntr, *dac_cntr, *adc_cntr;
 volatile int16_t *tx_level, *dac_level;
 volatile uint8_t *gpio_in, *gpio_out, *rx_rst, *tx_rst, *lo_rst;
@@ -241,7 +243,6 @@ uint8_t log_table_lookup[256]; /* lookup table from linear scale to
 
 uint8_t i2c_boost_data = 0;
 
-uint8_t dac_mux_data = 0;
 uint8_t dac_level_data = 0;
 
 uint8_t cw_int_data = 0;
@@ -405,17 +406,18 @@ void alex_write()
 
 uint16_t misc_data_0 = 0;
 uint16_t misc_data_1 = 0;
+uint16_t misc_data_2 = 0;
 
 inline int lower_bound(int *array, int size, int value)
 {
-	int i = 0, j = size, k;
-	while (i < j)
-	{
-		k = (i + j) / 2;
-		if (value > array[k]) i = k + 1;
-		else j = k;
-	}
-	return i;
+  int i = 0, j = size, k;
+  while(i < j)
+  {
+	k = i + (j - i) / 2;
+	if(value > array[k]) i = k + 1;
+	else j = k;
+  }
+  return i;
 }
 
 void misc_write()
@@ -430,7 +432,8 @@ void misc_write()
 	}
 
 	data |= (code[0] != code[1]) << 8 | code[2] << 4 | code[1];
-	data |= (misc_data_0 & 0x03) << 11 | (misc_data_1 & 0x18) << 6;
+	data |= (misc_data_1 & 0x18) << 8 | (misc_data_0 & 0x18) << 6;
+	data |= (misc_data_2 & 0x03) << 13;
 
 	if (i2c_misc_data != data)
 	{
@@ -541,40 +544,40 @@ void c25_detect_hardware(void)
 				// read the Charly 25 TRX board ID and model
 				c25lc_trx_present = false;
 				c25ab_trx_present = false;
-                c25pp_trx_present = false;
+				c25pp_trx_present = false;
 
 				if (read(i2c_fd, input_register, 1) == 1)
 				{
 					C25_TRX_ID = input_register[0];
-                    
-                    switch (C25_TRX_ID)
-                    {
-                        case 128:
-                        case 129:
-                        c25lc_trx_present = true;
-                        break;
-                        
-                        case 130:
-                        c25ab_trx_present = true;
-                        break;
 
-                        case 131:
-                        c25pp_trx_present = true;
-                        break;
-                        
-                        default:
-                        fprintf(stderr, "Charly 25 TRX board with unknown ID found!\nPrototype present?\n");
-#ifdef CHARLY25LC                       
-                        fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
+					switch (C25_TRX_ID)
+					{
+						case 128:
+						case 129:
+						c25lc_trx_present = true;
+						break;
+
+						case 130:
+						c25ab_trx_present = true;
+						break;
+
+						case 131:
+						c25pp_trx_present = true;
+						break;
+
+						default:
+						fprintf(stderr, "Charly 25 TRX board with unknown ID found!\nPrototype present?\n");
+#ifdef CHARLY25LC
+						fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
 #else
 #ifdef CHARLY25AB
-                        fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
+						fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
 #else
-                        fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
+						fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
 #endif
 #endif
-                        break;
-                    }
+						break;
+					}
 				}
 			}
 			// If no ID chip is present set the board model via pre-processor #define
@@ -584,14 +587,14 @@ void c25_detect_hardware(void)
 
 #ifdef CHARLY25LC
 				c25lc_trx_present = true;
-                fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
+				fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
 #else
 #ifdef CHARLY25AB
 				c25ab_trx_present = true;
-                fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
+				fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
 #else
 				c25pp_trx_present = true;
-                fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
+				fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
 #endif
 #endif
 			}
@@ -757,7 +760,7 @@ void c25_detect_hardware(void)
 	if (c25lc_trx_present) fprintf(stderr, "C25 LC TRX board ID: %u\n", C25_TRX_ID);
 	if (c25ab_trx_present) fprintf(stderr, "C25 AB TRX board ID: %u\n", C25_TRX_ID);
 	if (c25pp_trx_present) fprintf(stderr, "C25 PP TRX board ID: %u\n", C25_TRX_ID);
-    if (c25_rx1_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 1 BPF\n");
+	if (c25_rx1_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 1 BPF\n");
 	if (c25_rx2_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 2 BPF\n");
 	if (i2c_codec) fprintf(stderr, "- AUDIO CODEC\n");
 }
@@ -810,40 +813,40 @@ uint16_t c25pp_switch_tx_lpf(void)
 {
 	static uint16_t c25pp_tx_lpf_i2c_data = 0;
 
-	// Wipe bits that might get changed 
+	// Wipe bits that might get changed
 	uint16_t c25pp_tx_lpf_i2c_new_data = c25_i2c_data & 0x004f;
 
-	// Switch LPF depending on TX frequency 
-	if (C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ)  // 6m LPF 
+	// Switch LPF depending on TX frequency
+	if (C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ)  // 6m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 8;
 	}
-	else if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || (C25_12M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_12M_LOW_FREQ))  // 10/12m LPF 
+	else if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || (C25_12M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_12M_LOW_FREQ))  // 10/12m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 9;
 	}
-	else if ((C25_15M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_15M_LOW_FREQ) || (C25_17M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_17M_LOW_FREQ))  // 15/17m LPF 
+	else if ((C25_15M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_15M_LOW_FREQ) || (C25_17M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_17M_LOW_FREQ))  // 15/17m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 10;
 	}
-	else if ((C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ) || (C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ))  // 20/30m LPF 
+	else if ((C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ) || (C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ))  // 20/30m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 11;
 	}
-	else if ((C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ) || (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ))  // 40/60m LPF 
+	else if ((C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ) || (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ))  // 40/60m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 12;
 	}
-	else if (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ)  // 80m LPF 
+	else if (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ)  // 80m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 13;
 	}
-	else if (C25_160M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_160M_LOW_FREQ)  // 160m LPF 
+	else if (C25_160M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_160M_LOW_FREQ)  // 160m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 14;
 	}
 
-	// Turn PTT and PA only on if a LPF is active 
+	// Turn PTT and PA only on if a LPF is active
 	if ((c25pp_tx_lpf_i2c_new_data & 0x7f00) != 0)
 	{
 		c25pp_tx_lpf_i2c_new_data |= ((c25_mox & 1) | (tx_mux_data & 1)) << 4;  // C0: Bit 0 - MOX (1 = active, 0 = inactive)
@@ -860,12 +863,12 @@ uint16_t c25pp_switch_tx_lpf(void)
 		fprintf(stderr, "LPF bitmask in hex: %x\n", (c25pp_tx_lpf_i2c_new_data & 0x7f00) >> 8);
 		fprintf(stderr, "PA and PTT state %d\n", (c25pp_tx_lpf_i2c_new_data & 0x0030) >> 4);
 		fprintf(stderr, "c25pp_tx_lpf_i2c_new_data in hex: %x\n", c25pp_tx_lpf_i2c_new_data);
-#endif  
+#endif
 
 #ifdef DEBUG_PA
 		fprintf(stderr, "gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
 		fprintf(stderr, "PA and PTT state %d\n", (c25pp_tx_lpf_i2c_data & 0x0030) >> 4);
-#endif 
+#endif
 	}
 
 	return c25pp_tx_lpf_i2c_data;
@@ -1231,10 +1234,9 @@ int main(int argc, char *argv[])
 
 	tx_mux = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40003000);
 	tx_ramp = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40004000);
-	dac_mux = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40005000);
-	dac_ramp = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40006000);
-	dac_data = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40007000);
-	adc_data = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40008000);
+	dac_ramp = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40005000);
+	dac_data = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40006000);
+	adc_data = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40007000);
 	tx_data = mmap(NULL, 4*sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd,  0x4000c000);
 	rx_data = mmap(NULL, 8 * sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40010000);
 	xadc = mmap(NULL, 16 * sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x40020000);
@@ -1333,11 +1335,7 @@ int main(int argc, char *argv[])
 		*dac_size = size;
 
 		/* set default dac level */
-		*dac_level = 32766;
-
-		/* set default dac mux channel */
-		dac_mux[16] = 0;
-		dac_mux[0] = 2;
+		*dac_level = 3200;
 	}
 	else
 	{
@@ -1399,7 +1397,7 @@ int main(int argc, char *argv[])
 		perror("bind tcp");
 		return EXIT_FAILURE;
 	}
-	
+
 	listen(sock_TCP_Server, 1024);
 
 	fprintf(stderr, "RP <--> PC: Listening for TCP client connection request\n");
@@ -1757,7 +1755,7 @@ void process_ep2(uint8_t *frame)
 		{
 			c25_i2c_data = c25ab_switch_tx_lpf();
 		}
-        else if (c25pp_trx_present)
+		else if (c25pp_trx_present)
 		{
 			c25_i2c_data = c25pp_switch_tx_lpf();
 		}
@@ -1803,7 +1801,7 @@ void process_ep2(uint8_t *frame)
 		if (c25_rx1_freq < freq_min || c25_rx1_freq > freq_max) break;
 		*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 125.0e6 * (1 << 30) + 0.5);
 		if (rx_sync_data) *rx_freq[1] = *rx_freq[0];
-		
+
 		if (freq_data[1] != c25_rx1_freq)
 		{
 			freq_data[1] = c25_rx1_freq;
@@ -1919,9 +1917,9 @@ void process_ep2(uint8_t *frame)
 		if (i2c_misc)
 		{
 			data = (frame[3] & 0x80) >> 6 | (frame[3] & 0x20) >> 5;
-			if (misc_data_0 != data)
+			if (misc_data_2 != data)
 			{
-				misc_data_0 = data;
+				misc_data_2 = data;
 				misc_write();
 			}
 		}
@@ -2009,6 +2007,15 @@ void process_ep2(uint8_t *frame)
 	case 20:
 	case 21:
 		rx_att_data = frame[4] & 0x1f;
+		if(i2c_misc)
+		{
+			data = frame[4] & 0x1f;
+			if(misc_data_0 != data)
+			{
+				misc_data_0 = data;
+				misc_write();
+			}
+		}
 		if(i2c_arduino)
 		{
 			/*
@@ -2100,7 +2107,7 @@ void process_ep2(uint8_t *frame)
 		if (i2c_codec)
 		{
 			data = dac_level_data;
-			*dac_level = (int16_t)floor(data * 128.494 + 0.5);
+			*dac_level = data * 64);
 		}
 		break;
 
@@ -2144,11 +2151,11 @@ void *handler_ep6(void *arg)
 	uint8_t id[4] = { 0xef, 0xfe, 1, 6 };
 	uint8_t header[40] =
 	{
-	  127, 127, 127, 0, 0, 33, 17, 21,
-	  127, 127, 127, 8, 0, 0, 0, 0,
-	  127, 127, 127, 16, 0, 0, 0, 0,
-	  127, 127, 127, 24, 0, 0, 0, 0,
-	  127, 127, 127, 32, 66, 66, 66, 66
+		127, 127, 127, 0, 0, 33, 17, 21,
+		127, 127, 127, 8, 0, 0, 0, 0,
+		127, 127, 127, 16, 0, 0, 0, 0,
+		127, 127, 127, 24, 0, 0, 0, 0,
+		127, 127, 127, 32, 66, 66, 66, 66
 	};
 
 #ifdef CHARLY25
@@ -2250,9 +2257,6 @@ void *handler_ep6(void *arg)
 			pointer[3] |= (*gpio_in & 7) | cw_ptt;
 			if (header_offset == 8)
 			{
-				value = xadc[153] >> 3;
-				pointer[4] = (value >> 8) & 0xff;
-				pointer[5] = value & 0xff;
 				value = xadc[152] >> 3;
 				pointer[6] = (value >> 8) & 0xff;
 				pointer[7] = value & 0xff;
@@ -2266,6 +2270,12 @@ void *handler_ep6(void *arg)
 				pointer[6] = (value >> 8) & 0xff;
 				pointer[7] = value & 0xff;
 			}
+			else if(header_offset == 24)
+			{
+				value = xadc[153] >> 3;
+				pointer[4] = (value >> 8) & 0xff;
+				pointer[5] = value & 0xff;
+			}
 			header_offset = header_offset >= 32 ? 0 : header_offset + 8;
 
 			pointer += 8;
@@ -2277,6 +2287,7 @@ void *handler_ep6(void *arg)
 				{
 					memcpy(pointer + 6, data1 + data_offset, 6);
 				}
+#ifndef ANANXD
 				if (size > 14)
 				{
 					memcpy(pointer + 12, data2 + data_offset, 6);
@@ -2285,6 +2296,16 @@ void *handler_ep6(void *arg)
 				{
 					memcpy(pointer + 18, data3 + data_offset, 6);
 				}
+#else
+				if(size > 20)
+				{
+					memcpy(pointer + 18, data2 + data_offset, 6);
+				}
+				if(size > 26)
+				{
+					memcpy(pointer + 24, data3 + data_offset, 6);
+				}
+#endif
 				data_offset += 8;
 				pointer += size;
 
@@ -2358,7 +2379,7 @@ inline void cw_on()
 	{
 		c25ab_switch_tx_lpf();
 	}
-    else if (c25pp_trx_present)
+	else if (c25pp_trx_present)
 	{
 		c25pp_switch_tx_lpf();
 	}
@@ -2370,9 +2391,6 @@ inline void cw_on()
 
 	if (i2c_codec && dac_level_data > 0)
 	{
-		dac_mux[16] = 1;
-		dac_mux[0] = 2;
-		dac_mux_data = 1;
 		*tx_rst |= 8; /* sidetone on */
 	}
 	while (delay--)
@@ -2393,7 +2411,7 @@ inline void cw_off()
 {
 	int delay = 1200 / cw_speed;
 	if (cw_delay < delay) delay = cw_delay;
-	if (i2c_codec && dac_mux_data)
+	if (i2c_codec)
 	{
 		*tx_rst &= ~8; /* sidetone off */
 	}
@@ -2435,21 +2453,11 @@ inline void cw_ptt_off()
 	{
 		c25ab_switch_tx_lpf();
 	}
-    else if (c25pp_trx_present)
+	else if (c25pp_trx_present)
 	{
 		c25pp_switch_tx_lpf();
 	}
 #endif
-
-	if (i2c_codec && dac_mux_data)
-	{
-		/* reset codec DAC fifo */
-		*tx_rst |= 2;
-		*tx_rst &= ~2;
-		dac_mux[16] = 0;
-		dac_mux[0] = 2;
-		dac_mux_data = 0;
-	}
 
 #ifdef DEBUG_CW
 	fprintf(stderr, "CW: PTT off ------\n");
@@ -2477,7 +2485,7 @@ inline void cw_space_delay(int code)
 	while (delay--)
 	{
 		usleep(1000);
-		if (tx_mux_data) cw_ptt_off();
+		if (cw_ptt) cw_ptt_off();
 		cw_memory[0] = cw_input();
 		cw_memory[1] |= cw_memory[0];
 	}
@@ -2490,7 +2498,7 @@ void *handler_keyer(void *arg)
 	while (1)
 	{
 		usleep(1000);
-		if (tx_mux_data) cw_ptt_off();
+		if (cw_ptt) cw_ptt_off();
 		if (!(cw_memory[0] = cw_input())) continue;
 
 		if (cw_mode == 0)
