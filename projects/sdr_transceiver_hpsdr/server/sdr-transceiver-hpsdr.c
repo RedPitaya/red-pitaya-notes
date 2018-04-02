@@ -1079,7 +1079,14 @@ int main(int argc, char *argv[])
 	volatile uint16_t *tx_size, *dac_size;
 	volatile int16_t *ps_level;
 	float scale, ramp[1024], a[4] = { 0.35875, 0.48829, 0.14128, 0.01168 };
+
+#ifdef CHARLY25
+	// Changed last byte from 1 to 100 to identify as Red Pitaya instead of Hermes device in the frontend software
+	uint8_t reply[11] = { 0xef, 0xfe, 2, 0, 0, 0, 0, 0, 0, 32, 100 };
+#else
 	uint8_t reply[11] = { 0xef, 0xfe, 2, 0, 0, 0, 0, 0, 0, 32, 1 };
+#endif
+
 	uint8_t id[4] = { 0xef, 0xfe, 1, 6 };
 	uint32_t code;
 	struct termios tty;
