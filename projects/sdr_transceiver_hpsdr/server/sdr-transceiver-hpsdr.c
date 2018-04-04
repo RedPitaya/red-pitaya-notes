@@ -1488,14 +1488,12 @@ int main(int argc, char *argv[])
 
 				if (i2c_codec)
 				{
-					if (!dac_mux_data)
-					{
-						while (*dac_cntr > 898) usleep(1000);
-						if (*dac_cntr == 0) for (j = 0; j < 504; ++j) *dac_data = 0;
-						for (j = 0; j < 504; j += 8) *dac_data = *(uint32_t *)(buffer[i] + 16 + j);
-						for (j = 0; j < 504; j += 8) *dac_data = *(uint32_t *)(buffer[i] + 528 + j);
-					}
+					while (*dac_cntr > 898) usleep(1000);
+					if (*dac_cntr == 0) for (j = 0; j < 504; ++j) *dac_data = 0;
+					for (j = 0; j < 504; j += 8) *dac_data = *(uint32_t *)(buffer[i] + 16 + j);
+					for (j = 0; j < 504; j += 8) *dac_data = *(uint32_t *)(buffer[i] + 528 + j);
 				}
+				
 				process_ep2(buffer[i] + 11);
 				process_ep2(buffer[i] + 523);
 				break;
@@ -2107,7 +2105,7 @@ void process_ep2(uint8_t *frame)
 		if (i2c_codec)
 		{
 			data = dac_level_data;
-			*dac_level = data * 64);
+			*dac_level = data * 64;
 		}
 		break;
 
