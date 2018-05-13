@@ -40,6 +40,7 @@
 15.03.2018 DG8MG: Added support for the LPFs on the Charly 25PP board.
 19.03.2018 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/4c9c20971f696f330b5e9742aff56dee70f5fb0b
 03.04.2018 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/fd78f4169a19919dc59360f9eef0ffc850d3f226
+25.04.2018 DG8MG: Added support for switching the RX BPF boards own RX/TX relay.
 */
 
 // DG8MG
@@ -118,26 +119,26 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20180403"
+#define SDR_APP_VERSION "20180428"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
 #define HAMLAB_AUDIO_I2C_DEVICE "/dev/i2c-6"
 
 // I2C address of the Charly 25 audio codec WM8731 or TLV320AIC23B address 0
-const uint8_t AUDIO_CODEC_ADDR = 0x1A;
+#define AUDIO_CODEC_ADDR 0x1A
 
 // I2C address of the Charly 25 trx frontend
-const uint8_t C25_ADDR = 0x20;
+#define C25_ADDR 0x20
 
 // I2C address of the first Charly 25 receiver BPF board
-const uint8_t C25_RX1_BPF_ADDR = 0x21;
+#define C25_RX1_BPF_ADDR 0x21
 
 // I2C address of the second Charly 25 receiver BPF board
-const uint8_t C25_RX2_BPF_ADDR = 0x22;
+#define C25_RX2_BPF_ADDR 0x22
 
 // I2C address of the Charly 25 TRX board ID chip
-const uint8_t C25_TRX_ID_ADDR = 0x1A;
+#define C25_TRX_ID_ADDR 0x1A
 
 // C25 filter frequencies
 const uint32_t C25_6M_LOW_FREQ = 49995000;
@@ -488,6 +489,8 @@ void icom_write()
 bool c25_mox = false;
 uint16_t c25_i2c_data = 0;
 uint32_t c25_tx_freq = 0;
+uint16_t c25_rx1_bpf_board_i2c_data = 0;
+uint16_t c25_rx2_bpf_board_i2c_data = 0;
 
 // I2C handling Charly 25
 int i2c_fd;
@@ -999,12 +1002,34 @@ uint16_t c25lc_switch_tx_lpf(void)
 	return c25lc_tx_lpf_i2c_data;
 }
 
-ssize_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
+uint16_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
 {
-	static uint16_t c25_rx_bpf_i2c_data = 0;
+	static uint16_t c25_rx1_bpf_i2c_data = 0;
+	static uint16_t c25_rx2_bpf_i2c_data = 0;
 
-	// Wipe bits that might get changed in this frame
 	uint16_t c25_rx_bpf_i2c_new_data = 0x0000;
+
+	switch (c25_rx_bpf_addr)
+	{
+		case C25_RX1_BPF_ADDR:
+		{
+			// Wipe bits that might get changed in this frame
+			c25_rx_bpf_i2c_new_data = c25_rx1_bpf_board_i2c_data & 0x0f00;
+			break;
+		}
+
+		case C25_RX2_BPF_ADDR:
+		{
+			// Wipe bits that might get changed in this frame
+			c25_rx_bpf_i2c_new_data = c25_rx2_bpf_board_i2c_data & 0x0f00;
+			break;
+		}
+
+		default:
+		{
+			return 0;
+		}
+	}
 
 	// Switch BPF depending on RX frequency
 	if (C25_6M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_6M_LOW_FREQ)  // 6m BPF
@@ -1056,16 +1081,132 @@ ssize_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
 		c25_rx_bpf_i2c_new_data |= 1 << 7;
 	}
 
-	if (c25_rx_bpf_i2c_new_data != c25_rx_bpf_i2c_data)
+	switch (c25_rx_bpf_addr)
 	{
-		c25_rx_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
-		ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
+		case C25_RX1_BPF_ADDR:
+		{
+			if (c25_rx_bpf_i2c_new_data != c25_rx1_bpf_i2c_data)
+			{
+				c25_rx1_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
+				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
 
 #ifdef DEBUG_BPF
-		fprintf(stderr, "BPF frequency: %d - BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
+				fprintf(stderr, "RX1 BPF frequency: %d - RX1 BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
 #endif
 
-		return i2c_write_addr_data16(i2c_fd, 0x02, c25_rx_bpf_i2c_data);
+				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx1_bpf_i2c_data);
+			}
+
+			return c25_rx1_bpf_i2c_data;
+			break;
+		}
+
+		case C25_RX2_BPF_ADDR:
+		{
+			if (c25_rx_bpf_i2c_new_data != c25_rx2_bpf_i2c_data)
+			{
+				c25_rx2_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
+				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
+
+#ifdef DEBUG_BPF
+				fprintf(stderr, "RX2 BPF frequency: %d - RX2 BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
+#endif
+
+				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx2_bpf_i2c_data);
+			}
+
+			return c25_rx2_bpf_i2c_data;
+			break;
+		}
+
+		default:
+		{
+			return 0;
+		}
+	}
+}
+
+uint16_t c25_switch_bpf_tx_relay(uint8_t c25_rx_bpf_addr, bool state)
+{
+	static uint16_t c25_rx1_bpf_i2c_data = 0;
+	static uint16_t c25_rx2_bpf_i2c_data = 0;
+
+	uint16_t c25_rx_bpf_i2c_new_data = 0x0000;
+
+	switch (c25_rx_bpf_addr)
+	{
+		case C25_RX1_BPF_ADDR:
+		{
+			// Wipe bit that might get changed in this frame
+			c25_rx_bpf_i2c_new_data = c25_rx1_bpf_board_i2c_data & 0xf7ff;
+			break;
+		}
+
+		case C25_RX2_BPF_ADDR:
+		{
+			// Wipe bit that might get changed in this frame
+			c25_rx_bpf_i2c_new_data = c25_rx2_bpf_board_i2c_data & 0xf7ff;
+			break;
+		}
+
+		default:
+		{
+			return 0;
+		}
+	}
+
+	// Switch BPF RX/TX relay depending on the requested state
+	if (state)
+	{
+		c25_rx_bpf_i2c_new_data |= 1 << 11;  // switch to TX path
+	}
+	else
+	{
+		c25_rx_bpf_i2c_new_data |= 0 << 11;  // switch to RX path
+	}
+
+	switch (c25_rx_bpf_addr)
+	{
+		case C25_RX1_BPF_ADDR:
+		{
+			if (c25_rx_bpf_i2c_new_data != c25_rx1_bpf_i2c_data)
+			{
+				c25_rx1_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
+				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
+
+#ifdef DEBUG_BPF
+				fprintf(stderr, "RX1 BPF RX/TX relay state: %d - RX1 BPF bitmask in hex: %04x\n", state, c25_rx_bpf_i2c_new_data);
+#endif
+
+				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx1_bpf_i2c_data);
+			}
+
+			return c25_rx1_bpf_i2c_data;
+			break;
+		}
+
+		case C25_RX2_BPF_ADDR:
+		{
+			if (c25_rx_bpf_i2c_new_data != c25_rx2_bpf_i2c_data)
+			{
+				c25_rx2_bpf_i2c_data = c25_rx_bpf_i2c_new_data;
+				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
+
+#ifdef DEBUG_BPF
+				fprintf(stderr, "RX2 BPF RX/TX relay state: %d - RX2 BPF bitmask in hex: %04x\n", state, c25_rx_bpf_i2c_new_data);
+#endif
+
+				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx2_bpf_i2c_data);
+			}
+
+			return c25_rx2_bpf_i2c_data;
+			break;
+		}
+
+		default:
+		{
+			return 0;
+		}
 	}
 }
 #endif
@@ -1493,7 +1634,7 @@ int main(int argc, char *argv[])
 					for (j = 0; j < 504; j += 8) *dac_data = *(uint32_t *)(buffer[i] + 16 + j);
 					for (j = 0; j < 504; j += 8) *dac_data = *(uint32_t *)(buffer[i] + 528 + j);
 				}
-				
+
 				process_ep2(buffer[i] + 11);
 				process_ep2(buffer[i] + 523);
 				break;
@@ -1745,6 +1886,11 @@ void process_ep2(uint8_t *frame)
 		if (c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
 		*tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
 
+		if (c25_rx1_bpf_i2c_present)
+		{
+			c25_rx1_bpf_board_i2c_data = c25_switch_bpf_tx_relay(C25_RX1_BPF_ADDR, c25_mox);
+		}
+
 		if (c25lc_trx_present)
 		{
 			c25_i2c_data = c25lc_switch_tx_lpf();
@@ -1813,7 +1959,7 @@ void process_ep2(uint8_t *frame)
 
 			if (c25_rx1_bpf_i2c_present)
 			{
-				c25_switch_rx_bpf(C25_RX1_BPF_ADDR, c25_rx1_freq);
+				c25_rx1_bpf_board_i2c_data = c25_switch_rx_bpf(C25_RX1_BPF_ADDR, c25_rx1_freq);
 			}
 		}
 		break;
@@ -1871,7 +2017,7 @@ void process_ep2(uint8_t *frame)
 
 			if (c25_rx2_bpf_i2c_present)
 			{
-				c25_switch_rx_bpf(C25_RX2_BPF_ADDR, c25_rx2_freq);
+				c25_rx2_bpf_board_i2c_data = c25_switch_rx_bpf(C25_RX2_BPF_ADDR, c25_rx2_freq);
 			}
 		}
 		break;
@@ -2369,6 +2515,12 @@ inline void cw_on()
 
 #ifdef CHARLY25
 	c25_mox = true;
+
+	if (c25_rx1_bpf_i2c_present)
+	{
+		c25_rx1_bpf_board_i2c_data = c25_switch_bpf_tx_relay(C25_RX1_BPF_ADDR, c25_mox);
+	}
+
 	if (c25lc_trx_present)
 	{
 		c25lc_switch_tx_lpf();
@@ -2443,6 +2595,7 @@ inline void cw_ptt_off()
 
 #ifdef CHARLY25
 	c25_mox = false;
+
 	if (c25lc_trx_present)
 	{
 		c25lc_switch_tx_lpf();
@@ -2454,6 +2607,11 @@ inline void cw_ptt_off()
 	else if (c25pp_trx_present)
 	{
 		c25pp_switch_tx_lpf();
+	}
+
+	if (c25_rx1_bpf_i2c_present)
+	{
+		c25_rx1_bpf_board_i2c_data = c25_switch_bpf_tx_relay(C25_RX1_BPF_ADDR, c25_mox);
 	}
 #endif
 
