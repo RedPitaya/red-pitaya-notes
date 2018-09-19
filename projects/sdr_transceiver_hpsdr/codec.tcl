@@ -32,7 +32,7 @@ cell pavel-demin:user:axi_axis_writer:1.0 writer_0 {
 }
 
 # Create fifo_generator
-cell xilinx.com:ip:fifo_generator:13.2 fifo_generator_0 {
+cell xilinx.com:ip:fifo_generator:13.1 fifo_generator_0 {
   PERFORMANCE_OPTIONS First_Word_Fall_Through
   INPUT_DATA_WIDTH 32
   INPUT_DEPTH 1024
@@ -266,7 +266,7 @@ cell pavel-demin:user:axis_i2s:1.0 i2s_0 {
 }
 
 # Create fifo_generator
-cell xilinx.com:ip:fifo_generator:13.2 fifo_generator_1 {
+cell xilinx.com:ip:fifo_generator:13.1 fifo_generator_1 {
   PERFORMANCE_OPTIONS First_Word_Fall_Through
   INPUT_DATA_WIDTH 32
   INPUT_DEPTH 1024
