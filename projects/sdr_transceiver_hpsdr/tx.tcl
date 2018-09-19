@@ -180,7 +180,7 @@ cell xilinx.com:ip:axis_broadcaster:1.1 bcast_0 {
 }
 
 # Create blk_mem_gen
-cell xilinx.com:ip:blk_mem_gen:8.4 bram_0 {
+cell xilinx.com:ip:blk_mem_gen:8.3 bram_0 {
   MEMORY_TYPE True_Dual_Port_RAM
   USE_BRAM_BLOCK Stand_Alone
   WRITE_WIDTH_A 32
