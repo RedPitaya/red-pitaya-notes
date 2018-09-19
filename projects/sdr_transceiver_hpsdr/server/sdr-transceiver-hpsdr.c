@@ -136,7 +136,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20180724"
+#define SDR_APP_VERSION "20180919"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -537,9 +537,10 @@ int hamlab_audio_i2c_fd;
 bool c25ab_trx_present = false;
 bool c25lc_trx_present = false;
 bool c25pp_trx_present = false;
-bool c25_rx1_bpf_i2c_present = false;
-bool c25_rx2_bpf_i2c_present = false;
+bool c25_rx1_bpf_present = false;
+bool c25_rx2_bpf_present = false;
 bool c25_ext_board_present = false;
+bool c25_bcd_encoder_present = false;
 bool charly25_present = false;
 bool hamlab_present = false;
 
@@ -569,82 +570,104 @@ void c25_detect_hardware(void)
 
 	if (i2c_fd >= 0)
 	{
-		if ((ioctl(i2c_fd, I2C_SLAVE, C25_TRX_ID_ADDR) < 0) && (ioctl(i2c_fd, I2C_SLAVE, C25_NEW_TRX_ID_ADDR) < 0))
-		{
-			// If no ID chip is present set the board model via pre-processor #define
-			fprintf(stderr, "No ID chip on the Charly 25 TRX board found!\n");
+		// Uninvert input - default is 0xf0 at PCA9557 I/O chip
+		ioctl(i2c_fd, I2C_SLAVE, C25_TRX_ID_ADDR);
 
-#ifdef CHARLY25LC
-			c25lc_trx_present = true;
-			fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
-#else
-#ifdef CHARLY25AB
-			c25ab_trx_present = true;
-			fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
-#else
-			c25pp_trx_present = true;
-			c25_ext_board_present = true;
-			fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
-#endif
-#endif
+		// Check if an ID chip on C25_TRX_ID_ADDR is present
+		if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) < 0)
+		{
+			// it's not present there, so try it with an ID chip on C25_NEW_TRX_ID_ADDR
+			ioctl(i2c_fd, I2C_SLAVE, C25_NEW_TRX_ID_ADDR);
 		}
-		else
+		
+		// Check if it works with an ID chip on C25_NEW_TRX_ID_ADDR
+		if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) >= 0)
 		{
-			// uninvert input - default is 0xf0 at PCA9557 I/O chip and
-			// check if an ID chip is present on the Charly 25 TRX board
-			if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) >= 0)
+			// set pins for input
+			i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
+
+			// address the input port register
+			i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
+
+			// read the Charly 25 TRX board ID and model
+			c25lc_trx_present = false;
+			c25ab_trx_present = false;
+			c25pp_trx_present = false;
+			c25_ext_board_present = false;
+
+			if (read(i2c_fd, input_register, 1) == 1)
 			{
-				// set pins for input
-				i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
+				C25_TRX_ID = input_register[0];
 
-				// address the input port register
-				i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
-
-				// read the Charly 25 TRX board ID and model
-				c25lc_trx_present = false;
-				c25ab_trx_present = false;
-				c25pp_trx_present = false;
-				c25_ext_board_present = false;
-
-				if (read(i2c_fd, input_register, 1) == 1)
+				switch (C25_TRX_ID)
 				{
-					C25_TRX_ID = input_register[0];
+					case 128:
+					case 129:
+					c25lc_trx_present = true;
+					break;
 
-					switch (C25_TRX_ID)
-					{
-						case 128:
-						case 129:
-						c25lc_trx_present = true;
-						break;
+					case 130:
+					c25ab_trx_present = true;
+					break;
 
-						case 130:
-						c25ab_trx_present = true;
-						break;
+					case 131:
+					c25pp_trx_present = true;
+					c25_ext_board_present = true;
+					break;
 
-						case 131:
-						c25pp_trx_present = true;
-						c25_ext_board_present = true;
-						break;
-
-						default:
-						fprintf(stderr, "Charly 25 TRX board with unknown ID found!\nPrototype present?\n");
+					default:
+					fprintf(stderr, "Charly 25 TRX board with unknown ID: %u found!\nPrototype present?\n", C25_TRX_ID);
 #ifdef CHARLY25LC
-						fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
+					c25lc_trx_present = true;
+					C25_TRX_ID = 129;
+					fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
+					fprintf(stderr, "Faked board ID to Charly 25LC TRX as expected!\n");
 #else
 #ifdef CHARLY25AB
-						fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
+					c25ab_trx_present = true;
+					C25_TRX_ID = 130;
+					fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
+					fprintf(stderr, "Faked board ID to Charly 25AB TRX as expected!\n");
 #else
-						fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
+					c25pp_trx_present = true;
+					c25_ext_board_present = true;
+					C25_TRX_ID = 131;
+					fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
+					fprintf(stderr, "Faked board ID to Charly 25PP TRX as expected!\n");
 #endif
 #endif
-						break;
-					}
+					break;
 				}
 			}
 			else
 			{
-				fprintf(stderr, "Charly 25 TRX ID chip - I2C ioctl error!\n");
+				fprintf(stderr, "Charly 25 TRX ID chip - I2C read error!\n");
 			}
+		}
+		else
+		{
+			// If no ID chip is present set the board model via pre-processor #define statements
+			fprintf(stderr, "No ID chip on the Charly 25 TRX board found!\n");
+
+#ifdef CHARLY25LC
+			c25lc_trx_present = true;
+			C25_TRX_ID = 129;
+			fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
+			fprintf(stderr, "Faked board ID to Charly 25LC TRX as expected!\n");
+#else
+#ifdef CHARLY25AB
+			c25ab_trx_present = true;
+			C25_TRX_ID = 130;
+			fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
+			fprintf(stderr, "Faked board ID to Charly 25AB TRX as expected!\n");
+#else
+			c25pp_trx_present = true;
+			c25_ext_board_present = true;
+			C25_TRX_ID = 131;
+			fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
+			fprintf(stderr, "Faked board ID to Charly 25PP TRX as expected!\n");
+#endif
+#endif
 		}
 
 		if (ioctl(i2c_fd, I2C_SLAVE_FORCE, C25_ADDR) >= 0)
@@ -678,7 +701,7 @@ void c25_detect_hardware(void)
 			// set all pins to low
 			if (i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
 			{
-				c25_rx1_bpf_i2c_present = true;
+				c25_rx1_bpf_present = true;
 
 				// configure all pins as output
 				i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
@@ -698,7 +721,7 @@ void c25_detect_hardware(void)
 			// set all pins to low
 			if (i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
 			{
-				c25_rx2_bpf_i2c_present = true;
+				c25_rx2_bpf_present = true;
 
 				// configure all pins as output
 				i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
@@ -712,8 +735,52 @@ void c25_detect_hardware(void)
 		{
 			fprintf(stderr, "Charly 25 RX2 BPF - I2C ioctl error!\n");
 		}
-	}
 
+		if (ioctl(i2c_fd, I2C_SLAVE, C25_EXT_BOARD_ADDR) >= 0)
+		{
+			// set all pins to low
+			if (i2c_write_addr_data16(i2c_fd, 0x02, 0x0000) >= 0)
+			{
+				c25_ext_board_present = true;
+
+				// configure all pins as output
+				i2c_write_addr_data16(i2c_fd, 0x06, 0x0000);
+			}
+			else
+			{
+				fprintf(stderr, "No Charly 25 EXT board found!\n");
+			}
+		}
+		else
+		{
+			fprintf(stderr, "Charly 25 EXT board - I2C ioctl error!\n");
+		}
+
+		if (ioctl(i2c_fd, I2C_SLAVE, C25_BCD_ENCODER_ADDR) >= 0)
+		{
+			// set all pins to low
+			if (i2c_write_addr_data8(i2c_fd, 0x01, 0x00) >= 0)
+			{
+				c25_bcd_encoder_present = true;
+
+				// configure all pins as output
+				i2c_write_addr_data8(i2c_fd, 0x03, 0x00);
+			}
+			else
+			{
+				fprintf(stderr, "No Charly 25 BCD encoder found!\n");
+			}
+		}
+		else
+		{
+			fprintf(stderr, "Charly 25 BCD encoder - I2C ioctl error!\n");
+		}
+	}
+	else
+	{
+		fprintf(stderr, "No devices on the I2C bus detected!\n");
+	}
+	
 	// Detect audio codec board
 	// Check if a HAMlab audio codec is present
 	if (hamlab_present)
@@ -803,9 +870,10 @@ void c25_detect_hardware(void)
 	if (c25lc_trx_present) fprintf(stderr, "C25 LC TRX board ID: %u\n", C25_TRX_ID);
 	if (c25ab_trx_present) fprintf(stderr, "C25 AB TRX board ID: %u\n", C25_TRX_ID);
 	if (c25pp_trx_present) fprintf(stderr, "C25 PP TRX board ID: %u\n", C25_TRX_ID);
+	if (c25_rx1_bpf_present) fprintf(stderr, "- Charly 25 RX 1 BPF\n");
+	if (c25_rx2_bpf_present) fprintf(stderr, "- Charly 25 RX 2 BPF\n");
 	if (c25_ext_board_present) fprintf(stderr, "- Charly 25 EXT board\n");
-	if (c25_rx1_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 1 BPF\n");
-	if (c25_rx2_bpf_i2c_present) fprintf(stderr, "- Charly 25 RX 2 BPF\n");
+	if (c25_bcd_encoder_present) fprintf(stderr, "- Charly 25 BCD encoder\n");
 	if (i2c_codec) fprintf(stderr, "- AUDIO CODEC\n");
 }
 
@@ -2168,7 +2236,7 @@ uint8_t ptt, boost;
 		if (c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
 		*tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
 
-		if (c25_rx1_bpf_i2c_present)
+		if (c25_rx1_bpf_present)
 		{
 			c25_rx1_bpf_board_i2c_data = c25_switch_bpf_tx_relay(C25_RX1_BPF_ADDR, c25_mox);
 		}
@@ -2184,7 +2252,11 @@ uint8_t ptt, boost;
 		else if (c25pp_trx_present)
 		{
 			c25_i2c_data = c25pp_switch_tx_lpf();
-			c25_switch_bcd_encoder();
+
+			if (c25_ext_board_present)
+			{
+				c25_bcd_encoder_i2c_data = c25_switch_bcd_encoder();
+			}
 		}
 		break;
 #endif
@@ -2239,7 +2311,7 @@ uint8_t ptt, boost;
 				*lo_rst |= 3;
 			}
 
-			if (c25_rx1_bpf_i2c_present)
+			if (c25_rx1_bpf_present)
 			{
 				c25_rx1_bpf_board_i2c_data = c25_switch_rx_bpf(C25_RX1_BPF_ADDR, c25_rx1_freq);
 			}
@@ -2297,7 +2369,7 @@ uint8_t ptt, boost;
 		{
 			freq_data[2] = c25_rx2_freq;
 
-			if (c25_rx2_bpf_i2c_present)
+			if (c25_rx2_bpf_present)
 			{
 				c25_rx2_bpf_board_i2c_data = c25_switch_rx_bpf(C25_RX2_BPF_ADDR, c25_rx2_freq);
 			}
@@ -2610,8 +2682,8 @@ void *handler_ep6(void *arg)
 
 #ifdef CHARLY25
 	// C2 – Mercury (receiver) software serial number (0 to 255) - set to 33 by default
-	if (c25_rx1_bpf_i2c_present) header[5] = 146;
-	if (c25_rx2_bpf_i2c_present) header[5] = 147;
+	if (c25_rx1_bpf_present) header[5] = 146;
+	if (c25_rx2_bpf_present) header[5] = 147;
 
 	// C3 - Penelope (transmitter) software serial number (0 to 255) – set to 17 by default
 	header[6] = C25_TRX_ID;
@@ -2860,7 +2932,7 @@ inline void cw_on()
 #ifdef CHARLY25
 	c25_mox = true;
 
-	if (c25_rx1_bpf_i2c_present)
+	if (c25_rx1_bpf_present)
 	{
 		c25_rx1_bpf_board_i2c_data = c25_switch_bpf_tx_relay(C25_RX1_BPF_ADDR, c25_mox);
 	}
@@ -2953,7 +3025,7 @@ inline void cw_ptt_off()
 		c25pp_switch_tx_lpf();
 	}
 
-	if (c25_rx1_bpf_i2c_present)
+	if (c25_rx1_bpf_present)
 	{
 		c25_rx1_bpf_board_i2c_data = c25_switch_bpf_tx_relay(C25_RX1_BPF_ADDR, c25_mox);
 	}
