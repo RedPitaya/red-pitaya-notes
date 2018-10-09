@@ -43,6 +43,7 @@
 25.04.2018 DG8MG: Added support for switching the RX BPF boards own RX/TX relay.
 04.07.2018 DG8MG: Added support for the functionalities on the Charly 25PP extension board.
 24.07.2018 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/77ca831432fd5f5d0f601fd4052f17e60bd49d7c
+25.09.2018 DG8MG: Added support for the measurement head on the Charly 25PP extension board.
 */
 
 // DG8MG
@@ -96,6 +97,12 @@
 
 // Define DEBUG_ADC_REF for measuring head reflected power debug messages
 // #define DEBUG_ADC_REF 1
+
+// Define DEBUG_ADC_FWD for measuring head forward power debug messages
+// #define DEBUG_ADC_TOTAL_CUR 1
+
+// Define DEBUG_ADC_REF for measuring head reflected power debug messages
+// #define DEBUG_ADC_PA_CUR 1
 // DG8MG
 
 #include <stdio.h>
@@ -1443,72 +1450,6 @@ uint8_t c25_switch_bcd_encoder(void)
 
 	return c25_bcd_encoder_i2c_data;
 }
-
-void c25_trigger_adc(uint8_t channel)
-{
-	// Start values
-	uint16_t config = 0x8583;
-
-	// Set single-ended input channel
-	switch (channel)
-	{
-		case (0):
-			config |= 0x4000;
-			break;
-		case (1):
-			config |= 0x5000;
-			break;
-		case (2):
-			config |= 0x6000;
-			break;
-		case (3):
-			config |= 0x7000;
-			break;
-	}
-
-	// Write config register to the ADC
-	ioctl(i2c_fd, I2C_SLAVE, C25_ADC_1015_ADDR);
-	i2c_write_addr_data16(i2c_fd, 0x01, config);
-}
-
-int16_t c25_read_adc(uint8_t channel)
-{
-	int16_t conversion_result = 0;
-	static int16_t conversion_register[4];
-
-	// Write config register to the ADC
-	ioctl(i2c_fd, I2C_SLAVE, C25_ADC_1015_ADDR);
-
-	// Address the conversion register to read from
-	i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
-
-	// Read the conversion result
-	if (read(i2c_fd, &conversion_result, 2) != 2)
-	{
-#ifdef DEBUG_ADC
-		fprintf(stderr, "ADC read error!\n");
-#endif
-		return -1;
-	}
-	else if ((conversion_result && 4096) == 0)
-	{
-		conversion_register[channel] = conversion_result;
-	}
-	else
-	{
-#ifdef DEBUG_ADC
-		fprintf(stderr, "ADC conversion error!\n");
-#endif
-		// return -2;
-	}
-
-#ifdef DEBUG_ADC
-	fprintf(stderr, "ADC: channel: %u, conversion_register: %d\n", channel, conversion_register[channel]);
-#endif
-
-	// Shift 12-bit results right 4 bits
-	return conversion_register[channel] >> 4;
-}
 #endif
 
 int main(int argc, char *argv[])
@@ -1896,8 +1837,7 @@ int main(int argc, char *argv[])
 			perror("c25_adc_thread pthread_create");
 			return EXIT_FAILURE;
 		}
-		// pthread_detach(c25_adc_thread);
-		fprintf(stderr, "ADC thread detached: %d\n", pthread_detach(c25_adc_thread));
+		pthread_detach(c25_adc_thread);
 	}
 #endif
 
@@ -2788,7 +2728,7 @@ void *handler_ep6(void *arg)
 					pointer[7] = c25_adc_conversion_register[2] & 0xff;
 
 #ifdef DEBUG_ADC_FWD
-					fprintf(stderr, "ADC FWD Power value, pointer[6] and pointer[7]: %u, %u, %u\n",c25_adc_conversion_register[2], pointer[6], pointer[7]);
+					fprintf(stderr, "DEBUG_ADC_FWD: c25_adc_conversion_register[2], pointer[6] and pointer[7]: %u, %u, %u\n",c25_adc_conversion_register[2], pointer[6], pointer[7]);
 #endif
 				}
 				else if (header_offset == 16)
@@ -2799,18 +2739,24 @@ void *handler_ep6(void *arg)
 					pointer[5] = c25_adc_conversion_register[3] & 0xff;
 
 #ifdef DEBUG_ADC_REF
-					fprintf(stderr, "ADC REF Power value, pointer[4] and pointer[5]: %u, %u, %u\n",c25_adc_conversion_register[3], pointer[4], pointer[5]);
+					fprintf(stderr, "DEBUG_ADC_REF: c25_adc_conversion_register[3], pointer[4] and pointer[5]: %u, %u, %u\n",c25_adc_conversion_register[3], pointer[4], pointer[5]);
 #endif
 
 					// Device current from ADS 1015 Ain0
 					pointer[6] = (c25_adc_conversion_register[0] >> 8) & 0xff;
 					pointer[7] = c25_adc_conversion_register[0] & 0xff;
+#ifdef DEBUG_ADC_TOTAL_CUR
+					fprintf(stderr, "DEBUG_ADC_TOTAL_CUR: c25_adc_conversion_register[0], pointer[6] and pointer[7]: %u, %u, %u\n",c25_adc_conversion_register[0], pointer[6], pointer[7]);
+#endif
 				}
 				else if(header_offset == 24)
 				{
 					// PA current from ADS 1015 Ain1
 					pointer[4] = (c25_adc_conversion_register[1] >> 8) & 0xff;
 					pointer[5] = c25_adc_conversion_register[1] & 0xff;
+#ifdef DEBUG_ADC_PA_CUR
+					fprintf(stderr, "DEBUG_ADC_PA_CUR: c25_adc_conversion_register[1], pointer[4] and pointer[5]: %u, %u, %u\n",c25_adc_conversion_register[1], pointer[4], pointer[5]);
+#endif
 				}
 			}
 #else
@@ -3180,7 +3126,7 @@ void *c25_adc_handler(void *arg)
 			if (i2c_write_addr_data16(i2c_fd, 0x01, config) != 3)
 			{
 #ifdef DEBUG_ADC
-				fprintf(stderr, "ADC config register write error!\n");
+				fprintf(stderr, "DEBUG_ADC: Config register write error!\n");
 #endif
 			}
 
@@ -3196,7 +3142,7 @@ void *c25_adc_handler(void *arg)
 			if (write(i2c_fd, conversion_result, 1) != 1)
 			{
 #ifdef DEBUG_ADC
-				fprintf(stderr, "ADC conversion register write error!\n");
+				fprintf(stderr, "DEBUG_ADC: Conversion register write error!\n");
 #endif
 			}
 
@@ -3204,7 +3150,7 @@ void *c25_adc_handler(void *arg)
 			if (read(i2c_fd, conversion_result, 2) != 2)
 			{
 #ifdef DEBUG_ADC
-				fprintf(stderr, "ADC read error!\n");
+				fprintf(stderr, "DEBUG_ADC: Read error!\n");
 #endif
 			}
 			else
@@ -3216,7 +3162,7 @@ void *c25_adc_handler(void *arg)
 			}
 
 #ifdef DEBUG_ADC
-			fprintf(stderr, "ADC: channel: %u, c25_adc_conversion_register: %u\n", channel, c25_adc_conversion_register[channel]);
+			fprintf(stderr, "DEBUG_ADC: channel: %u, c25_adc_conversion_register: %u\n", channel, c25_adc_conversion_register[channel]);
 #endif
 		}
 	}
