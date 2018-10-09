@@ -51,20 +51,14 @@
 // Define CHARLY25 for Charly 25 specific builds
 #define CHARLY25 1
 
-// Define CHARLY25AB together with CHARLY25 for Charly 25AB (all band version) compatible builds
-// #define CHARLY25AB 1
-
-// Define CHARLY25LC together with CHARLY25 for Charly 25LC (4 band version) compatible builds
-// #define CHARLY25LC 1
-
-// Define CHARLY25LC_60M_BAND together with CHARLY25LC for 60m band usage together with the 40m LPF filter on a Charly 25LC board
+// Define CHARLY25LC_60M_BAND for 60m band usage together with the 40m LPF filter on a Charly 25LC board
 // #define CHARLY25LC_60M_BAND
 
 // Define CHARLY25_TCP together with CHARLY25 to support TCP as protocol between the Red Pitaya device and the frontend software
 #define CHARLY25_TCP
 
-// Define DEBUG for debug messages
-// #define DEBUG 1
+// Define DEBUG_EP2 for endpoint 2 debug messages
+// #define DEBUG_EP2 1
 
 // Define DEBUG_ATT for ATT, PRE and ANT function call debug messages
 // #define DEBUG_ATT 1
@@ -911,7 +905,7 @@ uint16_t c25_switch_att_pre_ant(uint8_t frame_3)
 		i2c_write_addr_data16(i2c_fd, 0x02, c25_att_pre_ant_i2c_data);
 
 #ifdef DEBUG_ATT
-		fprintf(stderr, "ATT, PRE and ANT bitmask in hex: %x\n", c25_att_pre_ant_i2c_data & 0x004f);
+		fprintf(stderr, "DEBUG_ATT: ATT, PRE and ANT bitmask in hex: %x\n", c25_att_pre_ant_i2c_data & 0x004f);
 #endif
 	}
 
@@ -969,14 +963,14 @@ uint16_t c25pp_switch_tx_lpf(void)
 		i2c_write_addr_data16(i2c_fd, 0x02, c25pp_tx_lpf_i2c_data);
 
 #ifdef DEBUG_LPF
-		fprintf(stderr, "LPF bitmask in hex: %x\n", (c25pp_tx_lpf_i2c_new_data & 0x7f00) >> 8);
-		fprintf(stderr, "PA and PTT state %d\n", (c25pp_tx_lpf_i2c_new_data & 0x0030) >> 4);
-		fprintf(stderr, "c25pp_tx_lpf_i2c_new_data in hex: %x\n", c25pp_tx_lpf_i2c_new_data);
+		fprintf(stderr, "DEBUG_LPF: LPF bitmask in hex: %x\n", (c25pp_tx_lpf_i2c_new_data & 0x7f00) >> 8);
+		fprintf(stderr, "DEBUG_LPF: PA and PTT state: %d\n", (c25pp_tx_lpf_i2c_new_data & 0x0030) >> 4);
+		fprintf(stderr, "DEBUG_LPF: c25pp_tx_lpf_i2c_new_data in hex: %x\n", c25pp_tx_lpf_i2c_new_data);
 #endif
 
 #ifdef DEBUG_PA
-		fprintf(stderr, "gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
-		fprintf(stderr, "PA and PTT state %d\n", (c25pp_tx_lpf_i2c_data & 0x0030) >> 4);
+		fprintf(stderr, "DEBUG_PA: gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
+		fprintf(stderr, "DEBUG_PA: PA and PTT state: %d\n", (c25pp_tx_lpf_i2c_data & 0x0030) >> 4);
 #endif
 	}
 
@@ -1034,14 +1028,14 @@ uint16_t c25ab_switch_tx_lpf(void)
 		i2c_write_addr_data16(i2c_fd, 0x02, c25ab_tx_lpf_i2c_data);
 
 #ifdef DEBUG_LPF
-		fprintf(stderr, "LPF bitmask in hex: %x\n", (c25ab_tx_lpf_i2c_new_data & 0x7f00) >> 8);
-		fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_new_data & 0x0030) >> 4);
-		fprintf(stderr, "c25ab_tx_lpf_i2c_new_data in hex: %x\n", c25ab_tx_lpf_i2c_new_data);
+		fprintf(stderr, "DEBUG_LPF: LPF bitmask in hex: %x\n", (c25ab_tx_lpf_i2c_new_data & 0x7f00) >> 8);
+		fprintf(stderr, "DEBUG_LPF: PA and PTT state: %d\n", (c25ab_tx_lpf_i2c_new_data & 0x0030) >> 4);
+		fprintf(stderr, "DEBUG_LPF: c25ab_tx_lpf_i2c_new_data in hex: %x\n", c25ab_tx_lpf_i2c_new_data);
 #endif
 
 #ifdef DEBUG_PA
-		fprintf(stderr, "gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
-		fprintf(stderr, "PA and PTT state %d\n", (c25ab_tx_lpf_i2c_data & 0x0030) >> 4);
+		fprintf(stderr, "DEBUG_PA: gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
+		fprintf(stderr, "DEBUG_PA: PA and PTT state: %d\n", (c25ab_tx_lpf_i2c_data & 0x0030) >> 4);
 #endif
 	}
 
@@ -1089,9 +1083,9 @@ uint16_t c25lc_switch_tx_lpf(void)
 	}
 
 #ifdef DEBUG_LPF
-	fprintf(stderr, "LPF bitmask in hex: %x\n", (c25lc_tx_lpf_i2c_new_data & 0x0f00) >> 8);
-	fprintf(stderr, "PA and PTT state %d\n", (c25lc_tx_lpf_i2c_new_data & 0x3000) >> 12);
-	fprintf(stderr, "c25lc_tx_lpf_i2c_new_data in hex: %x\n", c25lc_tx_lpf_i2c_new_data);
+	fprintf(stderr, "DEBUG_LPF: LPF bitmask in hex: %x\n", (c25lc_tx_lpf_i2c_new_data & 0x0f00) >> 8);
+	fprintf(stderr, "DEBUG_LPF: PA and PTT state: %d\n", (c25lc_tx_lpf_i2c_new_data & 0x3000) >> 12);
+	fprintf(stderr, "DEBUG_LPF: c25lc_tx_lpf_i2c_new_data in hex: %x\n", c25lc_tx_lpf_i2c_new_data);
 #endif
 
 	if (c25lc_tx_lpf_i2c_new_data != c25lc_tx_lpf_i2c_data)
@@ -1101,8 +1095,8 @@ uint16_t c25lc_switch_tx_lpf(void)
 		i2c_write_addr_data16(i2c_fd, 0x02, c25lc_tx_lpf_i2c_data);
 
 #ifdef DEBUG_PA
-		fprintf(stderr, "gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
-		fprintf(stderr, "PA and PTT state %d\n", (c25lc_tx_lpf_i2c_data & 0x3000) >> 12);
+		fprintf(stderr, "DEBUG_PA: gpio_in: %u, c25_mox: %u, tx_mux_data: %u, c25_tx_freq: %u\n", *gpio_in, c25_mox, tx_mux_data, c25_tx_freq);
+		fprintf(stderr, "DEBUG_PA: PA and PTT state: %d\n", (c25lc_tx_lpf_i2c_data & 0x3000) >> 12);
 #endif
 	}
 	return c25lc_tx_lpf_i2c_data;
@@ -1197,7 +1191,7 @@ uint16_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
 				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
 
 #ifdef DEBUG_BPF
-				fprintf(stderr, "RX1 BPF frequency: %d - RX1 BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
+				fprintf(stderr, "DEBUG_BPF: RX1 BPF frequency: %d - RX1 BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
 #endif
 
 				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx1_bpf_i2c_data);
@@ -1215,7 +1209,7 @@ uint16_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
 				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
 
 #ifdef DEBUG_BPF
-				fprintf(stderr, "RX2 BPF frequency: %d - RX2 BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
+				fprintf(stderr, "DEBUG_BPF: RX2 BPF frequency: %d - RX2 BPF bitmask in hex: %04x\n", c25_rx_freq, c25_rx_bpf_i2c_new_data);
 #endif
 
 				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx2_bpf_i2c_data);
@@ -1281,7 +1275,7 @@ uint16_t c25_switch_bpf_tx_relay(uint8_t c25_rx_bpf_addr, bool state)
 				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
 
 #ifdef DEBUG_BPF
-				fprintf(stderr, "RX1 BPF RX/TX relay state: %d - RX1 BPF bitmask in hex: %04x\n", state, c25_rx_bpf_i2c_new_data);
+				fprintf(stderr, "DEBUG_BPF: RX1 BPF RX/TX relay state: %d - RX1 BPF bitmask in hex: %04x\n", state, c25_rx_bpf_i2c_new_data);
 #endif
 
 				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx1_bpf_i2c_data);
@@ -1299,7 +1293,7 @@ uint16_t c25_switch_bpf_tx_relay(uint8_t c25_rx_bpf_addr, bool state)
 				ioctl(i2c_fd, I2C_SLAVE, c25_rx_bpf_addr);
 
 #ifdef DEBUG_BPF
-				fprintf(stderr, "RX2 BPF RX/TX relay state: %d - RX2 BPF bitmask in hex: %04x\n", state, c25_rx_bpf_i2c_new_data);
+				fprintf(stderr, "DEBUG_BPF: RX2 BPF RX/TX relay state: %d - RX2 BPF bitmask in hex: %04x\n", state, c25_rx_bpf_i2c_new_data);
 #endif
 
 				i2c_write_addr_data16(i2c_fd, 0x02, c25_rx2_bpf_i2c_data);
@@ -1325,7 +1319,7 @@ uint16_t c25_switch_ext_board(uint16_t frame_1_2)
 	| | | | | | + +------------ Bit 0-1 - RX2 12dB attenuator and RX2 24db attenuator
 	| | | | + +---------------- Bit 2-3 - RX2 18dB preamp 1 and 2
 	| | | + ------------------- Bit 4 - unused
-	| | + --------------------- Bit 5 - VHF/UHF switch RX2
+	| | + --------------------- Bit 5 - RX2 Predistorsion switch
 	| + ----------------------- Bit 6 - VHF/UHF switch RX1
 	+ ------------------------- Bit 7 - VHF/UHF switch TX
 
@@ -1333,7 +1327,7 @@ uint16_t c25_switch_ext_board(uint16_t frame_1_2)
 	0 0 0 0 0 0 0 0
 	| | | | | | | |
 	| | | + + + + +------------ Bit 0-4 - Step attenuator 0-31dB
-	| | + --------------------- Bit 5 - RP external
+	| | + --------------------- Bit 5 - RP external usage OFF (SDR mode on)
 	| + ----------------------- Bit 6 - RP TX channel 2 envelope modulation
 	+ ------------------------- Bit 7 - unused
 	*/
@@ -1345,7 +1339,7 @@ uint16_t c25_switch_ext_board(uint16_t frame_1_2)
 		i2c_write_addr_data16(i2c_fd, 0x02, c25_ext_board_i2c_data);
 
 #ifdef DEBUG_EXT
-		fprintf(stderr, "DEBUG EXT: c25_ext_board_i2c_data: 0x%04x\n", c25_ext_board_i2c_data);
+		fprintf(stderr, "DEBUG_EXT: c25_ext_board_i2c_data: 0x%04x\n", c25_ext_board_i2c_data);
 #endif
 	}
 
@@ -1434,7 +1428,7 @@ uint8_t c25_switch_bcd_encoder(void)
 		i2c_write_addr_data8(i2c_fd, 0x01, c25_bcd_encoder_i2c_data);
 
 #ifdef DEBUG_BCD
-		fprintf(stderr, "DEBUG BCD: c25_bcd_encoder_i2c_data: 0x%02x\n", c25_bcd_encoder_i2c_data);
+		fprintf(stderr, "DEBUG_BCD: c25_bcd_encoder_i2c_data: 0x%02x\n", c25_bcd_encoder_i2c_data);
 #endif
 	}
 
@@ -1791,7 +1785,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef DEBUG_PROT
-	fprintf(stderr, "RP <--> PC: sock_TCP_Server: %d\n", sock_TCP_Server);
+	fprintf(stderr, "DEBUG_PROT: RP <--> PC: sock_TCP_Server: %d\n", sock_TCP_Server);
 #endif
 
 	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes, sizeof(yes));
@@ -1809,7 +1803,9 @@ int main(int argc, char *argv[])
 
 	listen(sock_TCP_Server, 1024);
 
+#ifdef DEBUG_PROT
 	fprintf(stderr, "RP <--> PC: Listening for TCP client connection request\n");
+#endif
 #endif
 
 	pthread_attr_init(&attr);
@@ -1882,7 +1878,7 @@ int main(int argc, char *argv[])
 				case 0x0201feef:
 
 #ifdef DEBUG_PROT
-				fprintf(stderr, "PC -> RP: data transmission via process_ep2 / code: 0x%08x\n", code);
+				fprintf(stderr, "DEBUG_PROT: PC -> RP: data transmission via process_ep2 / code: 0x%08x\n", code);
 #endif
 				if (!tx_mux_data)
 				{
@@ -1923,7 +1919,7 @@ int main(int argc, char *argv[])
 				case 0x0002feef:
 
 #ifdef DEBUG_PROT
-				fprintf(stderr, "RP -> PC: respond to an incoming Metis detection request / code: 0x%08x\n", code);
+				fprintf(stderr, "DEBUG_PROT: RP -> PC: respond to an incoming Metis detection request / code: 0x%08x\n", code);
 #endif
 				reply[2] = 2 + active_thread;
 				memset(buffer[i], 0, 60);
@@ -1935,7 +1931,7 @@ int main(int argc, char *argv[])
 				case 0x0004feef:
 
 #ifdef DEBUG_PROT
-				fprintf(stderr, "RP -> PC: stop the transmission via handler_ep6 / code: 0x%08x\n", code);
+				fprintf(stderr, "DEBUG_PROT: RP -> PC: stop the transmission via handler_ep6 / code: 0x%08x\n", code);
 #endif
 				enable_thread = 0;
 				while (active_thread) usleep(1000);
@@ -1946,7 +1942,7 @@ int main(int argc, char *argv[])
 				case 0x1104feef:
 
 #ifdef DEBUG_PROT
-				fprintf(stderr, "RP <--> PC: Connect the TCP client to the server / code: 0x%08x\n", code);
+				fprintf(stderr, "DEBUG_PROT: RP <--> PC: Connect the TCP client to the server / code: 0x%08x\n", code);
 #endif
 				if (sock_TCP_Client <= 0)
 				{
@@ -1956,8 +1952,9 @@ int main(int argc, char *argv[])
 						perror("accept");
 						return EXIT_FAILURE;
 					}
-
+#ifdef DEBUG_PROT
 					fprintf(stderr, "RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
+#endif
 				}
 #endif
 
@@ -1966,7 +1963,7 @@ int main(int argc, char *argv[])
 				case 0x0304feef:
 
 #ifdef DEBUG_PROT
-				fprintf(stderr, "RP <--> PC: start the handler_ep6 thread / code: 0x%08x\n", code);
+				fprintf(stderr, "DEBUG_PROT: RP <--> PC: start the handler_ep6 thread / code: 0x%08x\n", code);
 #endif
 
 				enable_thread = 0;
@@ -2030,7 +2027,7 @@ uint8_t ptt, boost;
 		receivers = ((frame[4] >> 3) & 7) + 1;  // C4: Bit 3-5 - Number of Receivers (000 = 1, 111 = 8)
 
 #ifdef DEBUG_PROT
-		fprintf(stderr, "PC -> RP: number of receivers: %u\n", receivers);
+		fprintf(stderr, "DEBUG_PROT: PC -> RP: number of receivers: %u\n", receivers);
 #endif
 
 		data = (frame[4] >> 7) & 1;
@@ -2164,8 +2161,8 @@ uint8_t ptt, boost;
 		c25_mox = frame[0] & 1;
 		c25_tx_freq = ntohl(*(uint32_t *)(frame + 1));
 
-#ifdef DEBUG
-		fprintf(stderr, "c25_tx_freq: %zu\n\n", c25_tx_freq);
+#ifdef DEBUG_EP2
+		fprintf(stderr, "DEBUG_EP2: c25_tx_freq: %zu\n\n", c25_tx_freq);
 #endif
 
 		if (c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
@@ -2227,8 +2224,8 @@ uint8_t ptt, boost;
 #ifdef CHARLY25
 		c25_rx1_freq = ntohl(*(uint32_t *)(frame + 1));
 
-#ifdef DEBUG
-		fprintf(stderr, "c25_rx1_freq: %zu\n\n", c25_rx1_freq);
+#ifdef DEBUG_EP2
+		fprintf(stderr, "DEBUG_EP2: c25_rx1_freq: %zu\n\n", c25_rx1_freq);
 #endif
 
 		if (c25_rx1_freq < freq_min || c25_rx1_freq > freq_max) break;
@@ -2293,8 +2290,8 @@ uint8_t ptt, boost;
 #ifdef CHARLY25
 		c25_rx2_freq = ntohl(*(uint32_t *)(frame + 1));
 
-#ifdef DEBUG
-		fprintf(stderr, "c25_rx2_freq: %zu\n\n", c25_rx2_freq);
+#ifdef DEBUG_EP2
+		fprintf(stderr, "DEBUG_EP2: c25_rx2_freq: %zu\n\n", c25_rx2_freq);
 #endif
 
 		if (c25_rx2_freq < freq_min || c25_rx2_freq > freq_max) break;
@@ -2515,8 +2512,8 @@ uint8_t ptt, boost;
 	case 25:
 		if(c25_ext_board_present)
 		{
-			// C1: Bit 0-1 - RX2 12dB attenuator and RX2 24db attenuator, Bit 2-3 - RX2 18dB preamp 1 and 2, Bit 4 - unused, Bit 5 - VHF/UHF switch RX2, Bit 6 - VHF/UHF switch RX1, Bit 7 - VHF/UHF switch TX
-			// C2: Bit 0-4 - Step attenuator 0-31dB, Bit 5 - RP external, Bit 6 - RP TX channel 2 envelope modulation, Bit 7 - unused
+			// C1: Bit 0-1 - RX2 12dB attenuator and RX2 24db attenuator, Bit 2-3 - RX2 18dB preamp 1 and 2, Bit 4 - unused, Bit 5 - RX2 Predistorsion switch, Bit 6 - VHF/UHF switch RX1, Bit 7 - VHF/UHF switch TX
+			// C2: Bit 0-4 - Step attenuator 0-31dB, Bit 5 - RP external OFF (SDR mode on), Bit 6 - RP TX channel 2 envelope modulation, Bit 7 - unused
 
 			// switch the functions of the Charly 25 extension board
 			data = frame[1];
@@ -2578,13 +2575,13 @@ uint8_t ptt, boost;
 		break;
 	}
 
-#ifdef DEBUG
-	fprintf(stderr, "Frames after switch case statement:\n");
-	fprintf(stderr, "Frame[0]: %d\n", frame[0]);
-	fprintf(stderr, "Frame[1]: %d\n", frame[1]);
-	fprintf(stderr, "Frame[2]: %d\n", frame[2]);
-	fprintf(stderr, "Frame[3]: %d\n", frame[3]);
-	fprintf(stderr, "Frame[4]: %d\n", frame[4]);
+#ifdef DEBUG_EP2
+	fprintf(stderr, "DEBUG_EP2: Frames after switch case statement:\n");
+	fprintf(stderr, "DEBUG_EP2: frame[0]: %d\n", frame[0]);
+	fprintf(stderr, "DEBUG_EP2: frame[1]: %d\n", frame[1]);
+	fprintf(stderr, "DEBUG_EP2: frame[2]: %d\n", frame[2]);
+	fprintf(stderr, "DEBUG_EP2: frame[3]: %d\n", frame[3]);
+	fprintf(stderr, "DEBUG_EP2: frame[4]: %d\n", frame[4]);
 #endif
 }
 
@@ -2819,7 +2816,9 @@ void *handler_ep6(void *arg)
 		{
 			if (sendmmsg(sock_TCP_Client, datagram, m, 0) < 0)
 			{
-				fprintf(stderr, "RP -> PC: TCP sendmmsg error occurred at sequence number: %u !\n", counter);
+#ifdef DEBUG_PROT
+				fprintf(stderr, "DEBUG_PROT: RP -> PC: TCP sendmmsg error occurred at sequence number: %u !\n", counter);
+#endif
 			}
 		}
 		else
@@ -2829,7 +2828,7 @@ void *handler_ep6(void *arg)
 		}
 
 #ifdef DEBUG_PROT
-		fprintf(stderr, "RP -> PC: Sequence number: %u and %u further sequences from %u receivers sent!\n", counter, m-1, receivers);
+		fprintf(stderr, "DEBUG_PROT: RP -> PC: Sequence number: %u and %u further sequences from %u receivers sent!\n", counter, m-1, receivers);
 #endif
 	}
 	active_thread = 0;
@@ -2851,7 +2850,7 @@ inline int cw_input()
 	if (input != cw_debug_memory)
 	{
 		cw_debug_memory = input;
-		fprintf(stderr, "CW: input: %u\n", input);
+		fprintf(stderr, "DEBUG_CW: input: %u\n", input);
 	}
 #endif
 
@@ -2893,7 +2892,7 @@ inline void cw_on()
 #endif
 
 #ifdef DEBUG_CW
-	fprintf(stderr, "CW: PTT on ------\n");
+	fprintf(stderr, "DEBUG_CW: PTT on ------\n");
 #endif
 
 	if (i2c_codec && dac_level_data > 0)
@@ -2910,7 +2909,7 @@ inline void cw_on()
 	*tx_rst |= 4; /* RF on */
 
 #ifdef DEBUG_CW
-	fprintf(stderr, "CW: RF on\n");
+	fprintf(stderr, "DEBUG_CW: RF on\n");
 #endif
 }
 
@@ -2932,7 +2931,7 @@ inline void cw_off()
 	cw_ptt_delay = cw_hang > 0 ? cw_hang : 10;
 
 #ifdef DEBUG_CW
-	fprintf(stderr, "CW: RF off\n");
+	fprintf(stderr, "DEBUG_CW: RF off\n");
 #endif
 }
 
@@ -2973,7 +2972,7 @@ inline void cw_ptt_off()
 #endif
 
 #ifdef DEBUG_CW
-	fprintf(stderr, "CW: PTT off ------\n");
+	fprintf(stderr, "DEBUG_CW: PTT off ------\n");
 #endif
 }
 
