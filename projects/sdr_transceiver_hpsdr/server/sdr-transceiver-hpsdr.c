@@ -44,6 +44,7 @@
 04.07.2018 DG8MG: Added support for the functionalities on the Charly 25PP extension board.
 24.07.2018 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/77ca831432fd5f5d0f601fd4052f17e60bd49d7c
 25.09.2018 DG8MG: Added support for the measurement head on the Charly 25PP extension board.
+09.10.2018 DG8MG: Added command line parameter to override Charly 25 TRX board type detection.
 */
 
 // DG8MG
@@ -143,7 +144,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20180919"
+#define SDR_APP_VERSION "20181009"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -553,6 +554,7 @@ bool hamlab_present = false;
 
 // Charly 25 TRX board ID
 uint8_t C25_TRX_ID = 0;
+long c25_command_line_trx_board_id = 0;
 
 void c25_detect_hardware(void)
 {
@@ -571,110 +573,98 @@ void c25_detect_hardware(void)
 		i2c_fd = open(C25_I2C_DEVICE, O_RDWR);
 	}
 
-#ifdef DEBUG
-	fprintf(stderr, "i2c_fd: %u\n", i2c_fd);
-#endif
-
 	if (i2c_fd >= 0)
 	{
-		// Uninvert input - default is 0xf0 at PCA9557 I/O chip
-		ioctl(i2c_fd, I2C_SLAVE, C25_TRX_ID_ADDR);
-
-		// Check if an ID chip on C25_TRX_ID_ADDR is present
-		if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) < 0)
+		// If a FAKED board id via the command line is given, override the automatic trx board id detection
+		if (c25_command_line_trx_board_id > -1)
 		{
-			// it's not present there, so try it with an ID chip on C25_NEW_TRX_ID_ADDR
-			ioctl(i2c_fd, I2C_SLAVE, C25_NEW_TRX_ID_ADDR);
-		}
-		
-		// Check if it works with an ID chip on C25_NEW_TRX_ID_ADDR
-		if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) >= 0)
-		{
-			// set pins for input
-			i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
+			C25_TRX_ID = c25_command_line_trx_board_id;
+			fprintf(stderr, "Read FAKED board ID: %u from command line parameter!\n", C25_TRX_ID);
 
-			// address the input port register
-			i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
-
-			// read the Charly 25 TRX board ID and model
-			c25lc_trx_present = false;
-			c25ab_trx_present = false;
-			c25pp_trx_present = false;
-			c25_ext_board_present = false;
-
-			if (read(i2c_fd, input_register, 1) == 1)
+			switch (C25_TRX_ID)
 			{
-				C25_TRX_ID = input_register[0];
+				case 128:
+				case 129:
+				c25lc_trx_present = true;
+				break;
 
-				switch (C25_TRX_ID)
+				case 130:
+				c25ab_trx_present = true;
+				break;
+
+				case 131:
+				c25pp_trx_present = true;
+				c25_ext_board_present = true;
+				break;
+
+				default:
+				fprintf(stderr, "Charly 25 TRX board with FAKED unknown ID: %u!\nPrototype present?\n", C25_TRX_ID);
+				break;
+			}
+		}
+		// No FAKED board id is given, so work with the automatic trx board id detection
+		else
+		{
+			// Uninvert input - default is 0xf0 at PCA9557 I/O chip
+			ioctl(i2c_fd, I2C_SLAVE, C25_TRX_ID_ADDR);
+
+			// Check if an ID chip on C25_TRX_ID_ADDR is present
+			if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) < 0)
+			{
+				// it's not present there, so try it with an ID chip on C25_NEW_TRX_ID_ADDR
+				ioctl(i2c_fd, I2C_SLAVE, C25_NEW_TRX_ID_ADDR);
+			}
+
+			// Check if it works with an ID chip on C25_NEW_TRX_ID_ADDR
+			if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) >= 0)
+			{
+				// set pins for input
+				i2c_write_addr_data8(i2c_fd, 0x03, 0xff);
+
+				// address the input port register
+				i2c_write_addr_data8(i2c_fd, 0x00, 0x00);
+
+				// read the Charly 25 TRX board ID and model
+				c25lc_trx_present = false;
+				c25ab_trx_present = false;
+				c25pp_trx_present = false;
+				c25_ext_board_present = false;
+
+				if (read(i2c_fd, input_register, 1) == 1)
 				{
-					case 128:
-					case 129:
-					c25lc_trx_present = true;
-					break;
+					C25_TRX_ID = input_register[0];
 
-					case 130:
-					c25ab_trx_present = true;
-					break;
+					switch (C25_TRX_ID)
+					{
+						case 128:
+						case 129:
+						c25lc_trx_present = true;
+						break;
 
-					case 131:
-					c25pp_trx_present = true;
-					c25_ext_board_present = true;
-					break;
+						case 130:
+						c25ab_trx_present = true;
+						break;
 
-					default:
-					fprintf(stderr, "Charly 25 TRX board with unknown ID: %u found!\nPrototype present?\n", C25_TRX_ID);
-#ifdef CHARLY25LC
-					c25lc_trx_present = true;
-					C25_TRX_ID = 129;
-					fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
-					fprintf(stderr, "Faked board ID to Charly 25LC TRX as expected!\n");
-#else
-#ifdef CHARLY25AB
-					c25ab_trx_present = true;
-					C25_TRX_ID = 130;
-					fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
-					fprintf(stderr, "Faked board ID to Charly 25AB TRX as expected!\n");
-#else
-					c25pp_trx_present = true;
-					c25_ext_board_present = true;
-					C25_TRX_ID = 131;
-					fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
-					fprintf(stderr, "Faked board ID to Charly 25PP TRX as expected!\n");
-#endif
-#endif
-					break;
+						case 131:
+						c25pp_trx_present = true;
+						c25_ext_board_present = true;
+						break;
+
+						default:
+						fprintf(stderr, "Charly 25 TRX board with unknown ID: %u found!\nPrototype present?\n", C25_TRX_ID);
+						break;
+					}
+				}
+				else
+				{
+					fprintf(stderr, "Charly 25 TRX ID chip - I2C read error!\n");
 				}
 			}
 			else
 			{
-				fprintf(stderr, "Charly 25 TRX ID chip - I2C read error!\n");
+				// No ID chip is present
+				fprintf(stderr, "No ID chip on the Charly 25 TRX board found!\n");
 			}
-		}
-		else
-		{
-			// If no ID chip is present set the board model via pre-processor #define statements
-			fprintf(stderr, "No ID chip on the Charly 25 TRX board found!\n");
-
-#ifdef CHARLY25LC
-			c25lc_trx_present = true;
-			C25_TRX_ID = 129;
-			fprintf(stderr, "Expecting a Charly 25LC TRX board due to the define statement!\n");
-			fprintf(stderr, "Faked board ID to Charly 25LC TRX as expected!\n");
-#else
-#ifdef CHARLY25AB
-			c25ab_trx_present = true;
-			C25_TRX_ID = 130;
-			fprintf(stderr, "Expecting a Charly 25AB TRX board due to the define statement!\n");
-			fprintf(stderr, "Faked board ID to Charly 25AB TRX as expected!\n");
-#else
-			c25pp_trx_present = true;
-			c25_ext_board_present = true;
-			C25_TRX_ID = 131;
-			fprintf(stderr, "Expecting a Charly 25PP TRX board due to the define statement!\n");
-			fprintf(stderr, "Faked board ID to Charly 25PP TRX as expected!\n");
-#endif
-#endif
 		}
 
 		if (ioctl(i2c_fd, I2C_SLAVE_FORCE, C25_ADDR) >= 0)
@@ -1496,17 +1486,22 @@ int main(int argc, char *argv[])
 	uint8_t chan = 0;
 	long number;
 
+#ifdef CHARLY25
+	c25_command_line_trx_board_id = (argc == 7) ? strtol(argv[6], NULL, 10) : -1;
+	argc = 6;
+#endif
+
 	for(i = 0; i < 5; ++i)
 	{
-	  errno = 0;
-      number = (argc == 6) ? strtol(argv[i + 1], &end, 10) : -1;
-      if(errno != 0 || end == argv[i + 1] || number < 1 || number > 2)
-      {
-        printf("Usage: sdr-transceiver-hpsdr 1|2 1|2 1|2 1|2 1|2\n");
-        return EXIT_FAILURE;
-      }
-      chan |= (number - 1) << i;
-    }
+		errno = 0;
+		number = (argc == 6) ? strtol(argv[i + 1], &end, 10) : -1;
+		if(errno != 0 || end == argv[i + 1] || number < 1 || number > 2)
+		{
+			printf("Usage: sdr-transceiver-hpsdr 1|2 1|2 1|2 1|2 1|2\n");
+			return EXIT_FAILURE;
+		}
+		chan |= (number - 1) << i;
+	}
 
 	if ((fd = open("/dev/mem", O_RDWR)) < 0)
 	{
