@@ -45,6 +45,7 @@
 24.07.2018 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/red-pitaya-notes/commit/77ca831432fd5f5d0f601fd4052f17e60bd49d7c
 25.09.2018 DG8MG: Added support for the measurement head on the Charly 25PP extension board.
 09.10.2018 DG8MG: Added command line parameter to override Charly 25 TRX board type detection.
+27.10.2018 DG8MG: Added support to use the Red Pitaya internal slow ADC's for a measurement head if no Charly 25PP extension board is present.
 */
 
 // DG8MG
@@ -138,7 +139,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20181009"
+#define SDR_APP_VERSION "20181027"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -2009,8 +2010,12 @@ int main(int argc, char *argv[])
 
 void process_ep2(uint8_t *frame)
 {
-	uint32_t freq, c25_rx1_freq, c25_rx2_freq;
+#ifdef CHARLY25
+	uint32_t c25_rx1_freq, c25_rx2_freq;
+#endif
+
 	uint16_t data;
+	uint32_t freq;
 
 #ifndef CHARLY25
 	uint32_t data32;
@@ -2590,9 +2595,7 @@ void *handler_ep6(void *arg)
 	int i, j, k, m, n, size, rate_counter;
 	int data_offset, header_offset;
 	uint32_t counter;
-#ifndef CHARLY25
 	int32_t value;
-#endif
 	uint16_t audio[512];
 	uint8_t data0[4096];
 	uint8_t data1[4096];
@@ -2751,29 +2754,31 @@ void *handler_ep6(void *arg)
 #endif
 				}
 			}
-#else
-			if (header_offset == 8)
-			{
-				value = xadc[152] >> 3;
-				pointer[6] = (value >> 8) & 0xff;
-				pointer[7] = value & 0xff;
-			}
-			else if (header_offset == 16)
-			{
-				value = xadc[144] >> 3;
-				pointer[4] = (value >> 8) & 0xff;
-				pointer[5] = value & 0xff;
-				value = xadc[145] >> 3;
-				pointer[6] = (value >> 8) & 0xff;
-				pointer[7] = value & 0xff;
-			}
-			else if(header_offset == 24)
-			{
-				value = xadc[153] >> 3;
-				pointer[4] = (value >> 8) & 0xff;
-				pointer[5] = value & 0xff;
-			}
+			else
 #endif
+			{
+				if (header_offset == 8)
+				{
+					value = xadc[152] >> 3;
+					pointer[6] = (value >> 8) & 0xff;
+					pointer[7] = value & 0xff;
+				}
+				else if (header_offset == 16)
+				{
+					value = xadc[144] >> 3;
+					pointer[4] = (value >> 8) & 0xff;
+					pointer[5] = value & 0xff;
+					value = xadc[145] >> 3;
+					pointer[6] = (value >> 8) & 0xff;
+					pointer[7] = value & 0xff;
+				}
+				else if(header_offset == 24)
+				{
+					value = xadc[153] >> 3;
+					pointer[4] = (value >> 8) & 0xff;
+					pointer[5] = value & 0xff;
+				}
+			}
 			header_offset = header_offset >= 32 ? 0 : header_offset + 8;
 
 			pointer += 8;
