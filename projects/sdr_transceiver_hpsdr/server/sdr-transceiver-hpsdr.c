@@ -46,6 +46,7 @@
 25.09.2018 DG8MG: Added support for the measurement head on the Charly 25PP extension board.
 09.10.2018 DG8MG: Added command line parameter to override Charly 25 TRX board type detection.
 27.10.2018 DG8MG: Added support to use the Red Pitaya internal slow ADC's for a measurement head if no Charly 25PP extension board is present.
+24.11.2018 DG8MG: Improved the TCP protocol handling based on a patch from Christoph / DL1YCF.
 */
 
 // DG8MG
@@ -77,7 +78,13 @@
 // #define DEBUG_PA 1
 
 // Define DEBUG_PROT for HPSDR protocol debug messages
-// #define DEBUG_PROT 1
+#define DEBUG_PROT 1
+
+// Define DEBUG_TCP to debug possible TCP problems
+#define DEBUG_TCP 1
+
+// Define DEBUG_SEQ to check for sequence numbers of ep2 packets
+// #define DEBUG_SEQ 1
 
 // Define DEBUG_EXT for Extension board debug messages
 // #define DEBUG_EXT 1
@@ -100,6 +107,8 @@
 // Define DEBUG_ADC_REF for measuring head reflected power debug messages
 // #define DEBUG_ADC_PA_CUR 1
 // DG8MG
+
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <errno.h>
@@ -139,7 +148,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20181027"
+#define SDR_APP_VERSION "20181124"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -225,8 +234,8 @@ int rate = 0;
 int sock_ep2;
 
 #ifdef CHARLY25_TCP
-int sock_TCP_Server = 0;
-int sock_TCP_Client = 0;
+int sock_TCP_Server = -1;
+int sock_TCP_Client = -1;
 #endif
 
 struct sockaddr_in addr_ep6;
@@ -1439,7 +1448,7 @@ uint8_t c25_switch_bcd_encoder(void)
 
 int main(int argc, char *argv[])
 {
-	int fd, i, j, size;
+	int fd, i, j, size, bytes_read, bytes_left;
 	struct sched_param param;
 	pthread_attr_t attr;
 	pthread_t thread;
@@ -1472,6 +1481,7 @@ int main(int argc, char *argv[])
 	struct ifreq hwaddr;
 	struct sockaddr_in addr_ep2, addr_from[10];
 	uint8_t buffer[8][1032];
+	uint32_t *code0 = (uint32_t *) buffer[0];  // fast access to code of first buffer
 	struct iovec iovec[8][1];
 	struct mmsghdr datagram[8];
 	struct timeval tv;
@@ -1480,6 +1490,10 @@ int main(int argc, char *argv[])
 	char *end;
 	uint8_t chan = 0;
 	long number;
+
+#ifdef DEBUG_SEQ
+	uint32_t last_seqnum = 0xffffffff, seqnum;  // sequence number of received packet
+#endif
 
 #ifdef CHARLY25
 	c25_command_line_trx_board_id = (argc == 7) ? strtol(argv[6], NULL, 10) : -1;
@@ -1804,8 +1818,8 @@ int main(int argc, char *argv[])
 
 	listen(sock_TCP_Server, 1024);
 
-#ifdef DEBUG_PROT
-	fprintf(stderr, "RP <--> PC: Listening for TCP client connection request\n");
+#ifdef DEBUG_TCP
+	fprintf(stderr, "DEBUG_TCP: RP <--> PC: Listening for TCP client connection request\n");
 #endif
 #endif
 
@@ -1853,9 +1867,41 @@ int main(int argc, char *argv[])
 		ts.tv_nsec = 1000000;
 
 #ifdef CHARLY25_TCP
-		if (sock_TCP_Client)
+		if (sock_TCP_Client > -1)
 		{
-			size = recvmmsg(sock_TCP_Client, datagram, 8, 0, &ts);
+			// Using recvmmsg with a time-out should be used for a byte-stream protocol like TCP
+			// (Each "packet" in the datagram may be incomplete). This is especially true if the
+			// socket has a receive time-out, but this problem also occurs if the is no such
+			// receive time-out.
+			// Therefore we read a complete packet here (1032 bytes). Our TCP-extension to the
+			// HPSDR protocol ensures that only 1032-byte packets may arrive here.
+			bytes_read=0;
+			bytes_left=1032;
+			while (bytes_left > 0)
+			{
+				size = recvfrom(sock_TCP_Client, buffer[0]+bytes_read, (size_t) bytes_left, 0, NULL, 0);
+				if (size < 0 && errno == EAGAIN) continue;
+				if (size < 0) break;
+				bytes_read += size;
+				bytes_left -= size;
+
+#ifdef DEBUG_TCP
+				fprintf(stderr,"DEBUG_TCP: bytes_read: %d, bytes_left: %d\n", bytes_read, bytes_left);
+#endif
+			}
+
+			if (size >= 0)
+			{
+				// 1032 bytes have successfully been read by TCP.
+				// Let the downstream code know that there is a single packet, and its size
+				// In the case of a METIS-stop packet, change the size to 64
+				size = 1;
+				datagram[0].msg_len = bytes_read;
+				if (*code0  == 0x0004feef)
+				{
+					datagram[0].msg_len = 64;
+				}
+			}
 		}
 		else
 #endif
@@ -1875,12 +1921,34 @@ int main(int argc, char *argv[])
 
 			switch (code)
 			{
-			// PC to Red Pitaya transmission via process_ep2
+				// PC to Red Pitaya transmission via process_ep2
 				case 0x0201feef:
 
 #ifdef DEBUG_PROT
 				fprintf(stderr, "DEBUG_PROT: PC -> RP: data transmission via process_ep2 / code: 0x%08x\n", code);
 #endif
+
+				// processing an invalid packet is too dangerous -- skip it!
+				if (datagram[i].msg_len != 1032)
+				{
+#ifdef DEBUG_PROT
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+#endif
+					break;
+				}
+
+#ifdef DEBUG_SEQ
+				// sequence number check
+				seqnum = ((buffer[i][4]&0xFF)<<24) + ((buffer[i][5]&0xFF)<<16) + ((buffer[i][6]&0xFF)<<8) + (buffer[i][7]&0xFF);
+
+				if (seqnum != last_seqnum + 1)
+				{
+					fprintf(stderr,"DEBUG_SEQ: SEQ ERROR: last %ld, recvd %ld\n", (long) last_seqnum, (long) seqnum);
+				}
+
+				last_seqnum = seqnum;
+#endif
+
 				if (!tx_mux_data)
 				{
 					while (*tx_cntr > 3844) usleep(1000);
@@ -1922,6 +1990,16 @@ int main(int argc, char *argv[])
 #ifdef DEBUG_PROT
 				fprintf(stderr, "DEBUG_PROT: RP -> PC: respond to an incoming Metis detection request / code: 0x%08x\n", code);
 #endif
+
+				// processing an invalid packet is too dangerous -- skip it!
+				if (datagram[i].msg_len != 63)
+				{
+#ifdef DEBUG_PROT
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+#endif
+					break;
+				}
+
 				reply[2] = 2 + active_thread;
 				memset(buffer[i], 0, 60);
 				memcpy(buffer[i], reply, 11);
@@ -1934,8 +2012,26 @@ int main(int argc, char *argv[])
 #ifdef DEBUG_PROT
 				fprintf(stderr, "DEBUG_PROT: RP -> PC: stop the transmission via handler_ep6 / code: 0x%08x\n", code);
 #endif
+
+				// processing an invalid packet is too dangerous -- skip it!
+				if (datagram[i].msg_len != 64)
+				{
+#ifdef DEBUG_PROT
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+#endif
+					break;
+				}
+
 				enable_thread = 0;
 				while (active_thread) usleep(1000);
+
+#ifdef CHARLY25_TCP
+				if (sock_TCP_Client > -1)
+				{
+					close(sock_TCP_Client);
+					sock_TCP_Client = -1;
+				}
+#endif
 				break;
 
 				// start the Red Pitaya to PC transmission via handler_ep6
@@ -1945,7 +2041,7 @@ int main(int argc, char *argv[])
 #ifdef DEBUG_PROT
 				fprintf(stderr, "DEBUG_PROT: RP <--> PC: Connect the TCP client to the server / code: 0x%08x\n", code);
 #endif
-				if (sock_TCP_Client <= 0)
+				if (sock_TCP_Client < 0)
 				{
 					if((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) < 0)
 					{
@@ -1953,10 +2049,11 @@ int main(int argc, char *argv[])
 						perror("accept");
 						return EXIT_FAILURE;
 					}
-#ifdef DEBUG_PROT
-					fprintf(stderr, "RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
+#ifdef DEBUG_TCP
+					fprintf(stderr, "DEBUG_TCP: RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
 #endif
 				}
+				/* FALLTHROUGH */
 #endif
 
 				case 0x0104feef:
@@ -1966,6 +2063,15 @@ int main(int argc, char *argv[])
 #ifdef DEBUG_PROT
 				fprintf(stderr, "DEBUG_PROT: RP <--> PC: start the handler_ep6 thread / code: 0x%08x\n", code);
 #endif
+
+				// processing an invalid packet is too dangerous -- skip it!
+				if (datagram[i].msg_len != 64)
+				{
+#ifdef DEBUG_PROT
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+#endif
+					break;
+				}
 
 				enable_thread = 0;
 				while (active_thread) usleep(1000);
@@ -1987,6 +2093,20 @@ int main(int argc, char *argv[])
 				}
 				pthread_detach(thread);
 				break;
+
+#ifdef DEBUG_PROT
+				default:
+				// Possibly a discovery packet of the New protocol, otherwise a severe error
+				if (datagram[i].msg_len == 60 && code == 0 && buffer[i][4] == 0x02)
+				{
+					fprintf(stderr,"DEBUG_PROT: PC -> RP: NewProtocol discovery packet received (no response)\n");
+				}
+				else
+				{
+					fprintf(stderr,"DEBUG_PROT: PC -> RP: invalid code: 0x%08x (Len=%d)\n", code, datagram[i].msg_len);
+				}
+				break;
+#endif
 			}
 		}
 	}
@@ -1994,12 +2114,12 @@ int main(int argc, char *argv[])
 	close(sock_ep2);
 
 #ifdef CHARLY25_TCP
-	if (sock_TCP_Client)
+	if (sock_TCP_Client > -1)
 	{
 		close(sock_TCP_Client);
 	}
 
-	if (sock_TCP_Server)
+	if (sock_TCP_Server > -1)
 	{
 		close(sock_TCP_Server);
 	}
@@ -2817,7 +2937,7 @@ void *handler_ep6(void *arg)
 		}
 
 #ifdef CHARLY25_TCP
-		if (sock_TCP_Client)
+		if (sock_TCP_Client > -1)
 		{
 			if (sendmmsg(sock_TCP_Client, datagram, m, 0) < 0)
 			{
