@@ -47,11 +47,16 @@
 09.10.2018 DG8MG: Added command line parameter to override Charly 25 TRX board type detection.
 27.10.2018 DG8MG: Added support to use the Red Pitaya internal slow ADC's for a measurement head if no Charly 25PP extension board is present.
 24.11.2018 DG8MG: Improved the TCP protocol handling based on a patch from Christoph / DL1YCF.
+29.11.2018 DG8MG: Extended the TCP protocol handling to support the Red Pitaya device detection over different subnets.
+15.12.2018 DG8MG: Added support for the new STEMlab 122.88-16 SDR hardware.
 */
 
 // DG8MG
+// Define STEMLAB_122_16 to build a STEMlab 122.88-16 SDR hardware compatible version
+#define STEMLAB_122_16
+
 // Define CHARLY25 for Charly 25 specific builds
-#define CHARLY25 1
+#define CHARLY25
 
 // Define CHARLY25LC_60M_BAND for 60m band usage together with the 40m LPF filter on a Charly 25LC board
 // #define CHARLY25LC_60M_BAND
@@ -60,52 +65,55 @@
 #define CHARLY25_TCP
 
 // Define DEBUG_EP2 for endpoint 2 debug messages
-// #define DEBUG_EP2 1
+// #define DEBUG_EP2
 
 // Define DEBUG_ATT for ATT, PRE and ANT function call debug messages
-// #define DEBUG_ATT 1
+// #define DEBUG_ATT
 
 // Define DEBUG_BPF for BPF debug messages
-// #define DEBUG_BPF 1
+// #define DEBUG_BPF
 
 // Define DEBUG_CW for CW debug messages
-// #define DEBUG_CW 1
+// #define DEBUG_CW
 
 // Define DEBUG_LPF for TX LPF debug messages
 // #define DEBUG_LPF
 
 // Define DEBUG_PA for PA & PTT debug messages
-// #define DEBUG_PA 1
+// #define DEBUG_PA
 
 // Define DEBUG_PROT for HPSDR protocol debug messages
-#define DEBUG_PROT 1
+// #define DEBUG_PROT
 
 // Define DEBUG_TCP to debug possible TCP problems
-#define DEBUG_TCP 1
+// #define DEBUG_TCP
+
+// Define DEBUG_UDP to debug possible UDP problems
+// #define DEBUG_UDP
 
 // Define DEBUG_SEQ to check for sequence numbers of ep2 packets
-// #define DEBUG_SEQ 1
+// #define DEBUG_SEQ
 
 // Define DEBUG_EXT for Extension board debug messages
-// #define DEBUG_EXT 1
+// #define DEBUG_EXT
 
 // Define DEBUG_BCD for BCD band encoder debug messages
-// #define DEBUG_BCD 1
+// #define DEBUG_BCD
 
 // Define DEBUG_ADC for measuring head ADC debug messages
-// #define DEBUG_ADC 1
+// #define DEBUG_ADC
 
 // Define DEBUG_ADC_FWD for measuring head forward power debug messages
-// #define DEBUG_ADC_FWD 1
+// #define DEBUG_ADC_FWD
 
 // Define DEBUG_ADC_REF for measuring head reflected power debug messages
-// #define DEBUG_ADC_REF 1
+// #define DEBUG_ADC_REF
 
 // Define DEBUG_ADC_FWD for measuring head forward power debug messages
-// #define DEBUG_ADC_TOTAL_CUR 1
+// #define DEBUG_ADC_TOTAL_CUR
 
 // Define DEBUG_ADC_REF for measuring head reflected power debug messages
-// #define DEBUG_ADC_PA_CUR 1
+// #define DEBUG_ADC_PA_CUR
 // DG8MG
 
 #define _GNU_SOURCE
@@ -127,6 +135,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <linux/i2c-dev.h>
@@ -148,7 +157,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20181124"
+#define SDR_APP_VERSION "20181215"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -214,6 +223,15 @@ const uint32_t C25_80M_HIGH_FREQ = 4005000;
 
 const uint32_t C25_160M_LOW_FREQ = 1795000;
 const uint32_t C25_160M_HIGH_FREQ = 2005000;
+
+uint16_t c25_adc_conversion_register[4] = {0};
+void *c25_adc_handler(void *arg);
+
+#ifdef CHARLY25_TCP
+int sock_TCP_Server = -1;
+int sock_TCP_Client = -1;
+#endif
+
 #endif
 
 volatile uint32_t *rx_freq[2], *tx_freq, *alex, *tx_mux, *dac_freq;
@@ -230,13 +248,7 @@ const uint32_t freq_max = 61440000;
 
 int receivers = 1;
 int rate = 0;
-
 int sock_ep2;
-
-#ifdef CHARLY25_TCP
-int sock_TCP_Server = -1;
-int sock_TCP_Client = -1;
-#endif
 
 struct sockaddr_in addr_ep6;
 
@@ -246,11 +258,6 @@ int active_thread = 0;
 void process_ep2(uint8_t *frame);
 void *handler_ep6(void *arg);
 void *handler_keyer(void *arg);
-
-#ifdef CHARLY25
-uint16_t c25_adc_conversion_register[4] = {0};
-void *c25_adc_handler(void *arg);
-#endif
 
 #ifndef CHARLY25
 // variables to handle I2C devices
@@ -781,7 +788,7 @@ void c25_detect_hardware(void)
 	{
 		fprintf(stderr, "No devices on the I2C bus detected!\n");
 	}
-	
+
 	// Detect audio codec board
 	// Check if a HAMlab audio codec is present
 	if (hamlab_present)
@@ -1448,7 +1455,7 @@ uint8_t c25_switch_bcd_encoder(void)
 
 int main(int argc, char *argv[])
 {
-	int fd, i, j, size, bytes_read, bytes_left;
+	int fd, i, j, size;
 	struct sched_param param;
 	pthread_attr_t attr;
 	pthread_t thread;
@@ -1481,7 +1488,6 @@ int main(int argc, char *argv[])
 	struct ifreq hwaddr;
 	struct sockaddr_in addr_ep2, addr_from[10];
 	uint8_t buffer[8][1032];
-	uint32_t *code0 = (uint32_t *) buffer[0];  // fast access to code of first buffer
 	struct iovec iovec[8][1];
 	struct mmsghdr datagram[8];
 	struct timeval tv;
@@ -1496,6 +1502,12 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef CHARLY25
+
+#ifdef CHARLY25_TCP
+	int bytes_read, bytes_left;
+	uint32_t *code0 = (uint32_t *) buffer[0];  // fast access to code of first buffer
+#endif
+
 	c25_command_line_trx_board_id = (argc == 7) ? strtol(argv[6], NULL, 10) : -1;
 	argc = 6;
 #endif
@@ -1687,6 +1699,17 @@ int main(int argc, char *argv[])
 	/* set all GPIO pins to low */
 	*gpio_out = 0;
 
+#ifdef STEMLAB_122_16
+	/* set default rx phase increment */
+	*rx_freq[0] = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
+	*rx_freq[1] = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
+
+	/* set default rx sample rate */
+	*rx_rate = 1280;
+
+	/* set default tx phase increment */
+	*tx_freq = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
+#else
 	/* set default rx phase increment */
 	*rx_freq[0] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
 	*rx_freq[1] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
@@ -1696,6 +1719,7 @@ int main(int argc, char *argv[])
 
 	/* set default tx phase increment */
 	*tx_freq = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
+#endif
 
 	/* set tx ramp */
 	size = 1001;
@@ -1711,10 +1735,18 @@ int main(int argc, char *argv[])
 	}
 	*tx_size = size;
 
+#ifdef STEMLAB_122_16
+	/* set default tx level */
+	*tx_level = 32766;
+	/* set ps level */
+	*ps_level = 18716;
+#else
 	/* set default tx level */
 	*tx_level = 32110;
 	/* set ps level */
 	*ps_level = 23080;
+#endif
+
 	/* set default tx mux channel */
 	tx_mux[16] = 0;
 	tx_mux[0] = 2;
@@ -1793,20 +1825,23 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef CHARLY25_TCP
-	if ((sock_TCP_Server = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	if ((sock_TCP_Server = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) < 0)
 	{
 		perror("socket tcp");
 		return EXIT_FAILURE;
 	}
 
-#ifdef DEBUG_PROT
-	fprintf(stderr, "DEBUG_PROT: RP <--> PC: sock_TCP_Server: %d\n", sock_TCP_Server);
+#ifdef DEBUG_TCP
+	fprintf(stderr, "DEBUG_TCP: RP <--> PC: sock_TCP_Server: %d\n", sock_TCP_Server);
 #endif
 
 	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes, sizeof(yes));
 
-	int sndbufsize = 0xffff;
-	int rcvbufsize = 0xffff;
+	int tcpmaxseg = 1032;
+	setsockopt(sock_TCP_Server, IPPROTO_TCP, TCP_MAXSEG, (const char *)&tcpmaxseg, sizeof(int));
+
+	int sndbufsize = 65535;
+	int rcvbufsize = 65535;
 	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbufsize, sizeof(int));
 	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbufsize, sizeof(int));
 
@@ -1867,6 +1902,16 @@ int main(int argc, char *argv[])
 		ts.tv_nsec = 1000000;
 
 #ifdef CHARLY25_TCP
+		if (sock_TCP_Client < 0)
+		{
+			if((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) > -1)
+			{
+#ifdef DEBUG_TCP
+				fprintf(stderr, "DEBUG_TCP: RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
+#endif
+			}
+		}
+
 		if (sock_TCP_Client > -1)
 		{
 			// Using recvmmsg with a time-out should be used for a byte-stream protocol like TCP
@@ -1875,18 +1920,21 @@ int main(int argc, char *argv[])
 			// receive time-out.
 			// Therefore we read a complete packet here (1032 bytes). Our TCP-extension to the
 			// HPSDR protocol ensures that only 1032-byte packets may arrive here.
-			bytes_read=0;
-			bytes_left=1032;
+			bytes_read = 0;
+			bytes_left = 1032;
 			while (bytes_left > 0)
 			{
-				size = recvfrom(sock_TCP_Client, buffer[0]+bytes_read, (size_t) bytes_left, 0, NULL, 0);
+				size = recvfrom(sock_TCP_Client, buffer[0] + bytes_read, (size_t)bytes_left, 0, NULL, 0);
 				if (size < 0 && errno == EAGAIN) continue;
 				if (size < 0) break;
 				bytes_read += size;
 				bytes_left -= size;
 
 #ifdef DEBUG_TCP
-				fprintf(stderr,"DEBUG_TCP: bytes_read: %d, bytes_left: %d\n", bytes_read, bytes_left);
+				if (bytes_read != 1032)
+				{
+					fprintf(stderr,"DEBUG_TCP: bytes_read: %d, bytes_left: %d\n", bytes_read, bytes_left);
+				}
 #endif
 			}
 
@@ -1894,10 +1942,23 @@ int main(int argc, char *argv[])
 			{
 				// 1032 bytes have successfully been read by TCP.
 				// Let the downstream code know that there is a single packet, and its size
-				// In the case of a METIS-stop packet, change the size to 64
 				size = 1;
 				datagram[0].msg_len = bytes_read;
-				if (*code0  == 0x0004feef)
+
+				// In the case of a METIS-discovery packet, change the size to 63
+				if (*code0 == 0x0002feef)
+				{
+					datagram[0].msg_len = 63;
+				}
+
+				// In the case of a METIS-stop packet, change the size to 64
+				if (*code0 == 0x0004feef)
+				{
+					datagram[0].msg_len = 64;
+				}
+
+				// In the case of a METIS-start TCP packet, change the size to 64
+				if (*code0 == 0x1104feef)
 				{
 					datagram[0].msg_len = 64;
 				}
@@ -1907,6 +1968,13 @@ int main(int argc, char *argv[])
 #endif
 		{
 			size = recvmmsg(sock_ep2, datagram, 8, 0, &ts);
+
+#ifdef DEBUG_UDP
+			if (size > 0)
+			{
+				fprintf(stderr,"DEBUG_UDP: size: %d\n", size);
+			}
+#endif
 		}
 
 		if (size < 0 && errno != EAGAIN)
@@ -1932,7 +2000,7 @@ int main(int argc, char *argv[])
 				if (datagram[i].msg_len != 1032)
 				{
 #ifdef DEBUG_PROT
-					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int)(size-1), code, (int)datagram[i].msg_len);
 #endif
 					break;
 				}
@@ -1943,7 +2011,7 @@ int main(int argc, char *argv[])
 
 				if (seqnum != last_seqnum + 1)
 				{
-					fprintf(stderr,"DEBUG_SEQ: SEQ ERROR: last %ld, recvd %ld\n", (long) last_seqnum, (long) seqnum);
+					fprintf(stderr,"DEBUG_SEQ: SEQ ERROR: last %ld, recvd %ld\n", (long)last_seqnum, (long)seqnum);
 				}
 
 				last_seqnum = seqnum;
@@ -1995,7 +2063,7 @@ int main(int argc, char *argv[])
 				if (datagram[i].msg_len != 63)
 				{
 #ifdef DEBUG_PROT
-					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int)(size-1), code, (int)datagram[i].msg_len);
 #endif
 					break;
 				}
@@ -2003,7 +2071,27 @@ int main(int argc, char *argv[])
 				reply[2] = 2 + active_thread;
 				memset(buffer[i], 0, 60);
 				memcpy(buffer[i], reply, 11);
-				sendto(sock_ep2, buffer[i], 60, 0, (struct sockaddr *)&addr_from[i], sizeof(addr_from[i]));
+
+#ifdef CHARLY25_TCP
+				if (sock_TCP_Client > -1)
+				{
+					if (send(sock_TCP_Client, buffer[i], 60, 0) < 0)
+					{
+#ifdef DEBUG_TCP
+						fprintf(stderr, "DEBUG_TCP: RP -> PC: TCP send error occurred when responding to an incoming Metis detection request!\n");
+#endif
+					}
+
+					// close the TCP socket which was only used for the detection
+					close(sock_TCP_Client);
+					sock_TCP_Client = -1;
+				}
+				else
+#endif
+				{
+					sendto(sock_ep2, buffer[i], 60, 0, (struct sockaddr *)&addr_from[i], sizeof(addr_from[i]));
+				}
+
 				break;
 
 				// stop the Red Pitaya to PC transmission via handler_ep6
@@ -2017,7 +2105,7 @@ int main(int argc, char *argv[])
 				if (datagram[i].msg_len != 64)
 				{
 #ifdef DEBUG_PROT
-					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int)(size-1), code, (int)datagram[i].msg_len);
 #endif
 					break;
 				}
@@ -2038,21 +2126,11 @@ int main(int argc, char *argv[])
 #ifdef CHARLY25_TCP
 				case 0x1104feef:
 
-#ifdef DEBUG_PROT
-				fprintf(stderr, "DEBUG_PROT: RP <--> PC: Connect the TCP client to the server / code: 0x%08x\n", code);
-#endif
-				if (sock_TCP_Client < 0)
-				{
-					if((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) < 0)
-					{
-						fprintf(stderr, "*** ERROR TCP accept ***\n");
-						perror("accept");
-						return EXIT_FAILURE;
-					}
+
 #ifdef DEBUG_TCP
-					fprintf(stderr, "DEBUG_TCP: RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
+				fprintf(stderr, "DEBUG_TCP: PC -> RP: TCP METIS-start message received / code: 0x%08x\n", code);
 #endif
-				}
+
 				/* FALLTHROUGH */
 #endif
 
@@ -2068,7 +2146,7 @@ int main(int argc, char *argv[])
 				if (datagram[i].msg_len != 64)
 				{
 #ifdef DEBUG_PROT
-					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int) (size-1),code,(int) datagram[i].msg_len);
+					fprintf(stderr,"DEBUG_PROT: RvcMsg %d(%d) Code=0x%08x Len=%d\n", i, (int)(size-1), code, (int)datagram[i].msg_len);
 #endif
 					break;
 				}
@@ -2185,6 +2263,20 @@ uint8_t ptt, boost;
 		rate = frame[1] & 3;  // C1: Bit 0-1 - Speed (00 = 48kHz, 01 = 96kHz, 10 = 192kHz, 11 = 384kHz)
 		switch (frame[1] & 3)
 		{
+#ifdef STEMLAB_122_16
+		case 0:
+			*rx_rate = 1280;
+			break;
+		case 1:
+			*rx_rate = 640;
+			break;
+		case 2:
+			*rx_rate = 320;
+			break;
+		case 3:
+			*rx_rate = 160;
+			break;
+#else
 		case 0:
 			*rx_rate = 1000;
 			break;
@@ -2197,6 +2289,7 @@ uint8_t ptt, boost;
 		case 3:
 			*rx_rate = 125;
 			break;
+#endif
 		}
 
 #ifdef CHARLY25
@@ -2291,7 +2384,12 @@ uint8_t ptt, boost;
 #endif
 
 		if (c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
+
+#ifdef STEMLAB_122_16
+		*tx_freq = (uint32_t)floor(c25_tx_freq / 122.88e6 * (1 << 30) + 0.5);
+#else
 		*tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
+#endif
 
 		if (c25_rx1_bpf_present)
 		{
@@ -2321,7 +2419,13 @@ uint8_t ptt, boost;
 #ifndef CHARLY25
 		freq = ntohl(*(uint32_t *)(frame + 1));
 		if (freq < freq_min || freq > freq_max) break;
+
+#ifdef STEMLAB_122_16
+		*tx_freq = (uint32_t)floor(freq / 122.88e6 * (1 << 30) + 0.5);
+#else
 		*tx_freq = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
+#endif
+
 		if (freq_data[0] != freq)
 		{
 			freq_data[0] = freq;
@@ -2354,7 +2458,13 @@ uint8_t ptt, boost;
 #endif
 
 		if (c25_rx1_freq < freq_min || c25_rx1_freq > freq_max) break;
+
+#ifdef STEMLAB_122_16
+		*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 122.88e6 * (1 << 30) + 0.5);
+#else
 		*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 125.0e6 * (1 << 30) + 0.5);
+#endif
+
 		if (rx_sync_data) *rx_freq[1] = *rx_freq[0];
 
 		if (freq_data[1] != c25_rx1_freq)
@@ -2379,7 +2489,13 @@ uint8_t ptt, boost;
 #ifndef CHARLY25
 		freq = ntohl(*(uint32_t *)(frame + 1));
 		if (freq < freq_min || freq > freq_max) break;
+
+#ifdef STEMLAB_122_16
+		*rx_freq[0] = (uint32_t)floor(freq / 122.88e6 * (1 << 30) + 0.5);
+#else
 		*rx_freq[0] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
+#endif
+
 		if (rx_sync_data) *rx_freq[1] = *rx_freq[0];
 		if (freq_data[1] != freq)
 		{
@@ -2420,7 +2536,12 @@ uint8_t ptt, boost;
 #endif
 
 		if (c25_rx2_freq < freq_min || c25_rx2_freq > freq_max) break;
+
+#ifdef STEMLAB_122_16
+		*rx_freq[1] = (uint32_t)floor(c25_rx2_freq / 122.88e6 * (1 << 30) + 0.5);
+#else
 		*rx_freq[1] = (uint32_t)floor(c25_rx2_freq / 125.0e6 * (1 << 30) + 0.5);
+#endif
 
 		if (freq_data[2] != c25_rx2_freq)
 		{
@@ -2438,7 +2559,13 @@ uint8_t ptt, boost;
 #ifndef CHARLY25
 		freq = ntohl(*(uint32_t *)(frame + 1));
 		if (freq < freq_min || freq > freq_max) break;
+
+#ifdef STEMLAB_122_16
+		*rx_freq[1] = (uint32_t)floor(freq / 122.88e6 * (1 << 30) + 0.5);
+#else
 		*rx_freq[1] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
+#endif
+
 		if (freq_data[2] != freq)
 		{
 			freq_data[2] = freq;
@@ -2531,13 +2658,19 @@ uint8_t ptt, boost;
 		}
 		else
 		{
+#ifdef STEMLAB_122_16
+			*tx_level = (int16_t)floor(data * 128.494 + 0.5);
+#else
 			*tx_level = (int16_t)floor(data * 125.92 + 0.5);
-		}
 #endif
-
-#ifdef CHARLY25
+		}
+#else
 		data = frame[1];
+#ifdef STEMLAB_122_16
+		*tx_level = (int16_t)floor(data * 128.494 + 0.5);
+#else
 		*tx_level = (int16_t)floor(data * 125.92 + 0.5);
+#endif
 #endif
 
 		/* configure microphone boost */
@@ -2941,8 +3074,8 @@ void *handler_ep6(void *arg)
 		{
 			if (sendmmsg(sock_TCP_Client, datagram, m, 0) < 0)
 			{
-#ifdef DEBUG_PROT
-				fprintf(stderr, "DEBUG_PROT: RP -> PC: TCP sendmmsg error occurred at sequence number: %u !\n", counter);
+#ifdef DEBUG_TCP
+				fprintf(stderr, "DEBUG_TCP: RP -> PC: TCP sendmmsg error occurred at sequence number: %u !\n", counter);
 #endif
 			}
 		}
