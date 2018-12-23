@@ -53,7 +53,7 @@
 
 // DG8MG
 // Define STEMLAB_122_16 to build a STEMlab 122.88-16 SDR hardware compatible version
-// #define STEMLAB_122_16
+#define STEMLAB_122_16
 
 // Define CHARLY25 for Charly 25 specific builds
 #define CHARLY25
