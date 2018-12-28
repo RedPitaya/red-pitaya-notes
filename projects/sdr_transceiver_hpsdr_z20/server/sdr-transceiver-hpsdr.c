@@ -48,13 +48,10 @@
 27.10.2018 DG8MG: Added support to use the Red Pitaya internal slow ADC's for a measurement head if no Charly 25PP extension board is present.
 24.11.2018 DG8MG: Improved the TCP protocol handling based on a patch from Christoph / DL1YCF.
 29.11.2018 DG8MG: Extended the TCP protocol handling to support the Red Pitaya device detection over different subnets.
-15.12.2018 DG8MG: Added support for the new STEMlab 122.88-16 SDR hardware.
+27.12.2018 DG8MG: Added support for the new STEMlab 122.88-16 SDR hardware.
 */
 
 // DG8MG
-// Define STEMLAB_122_16 to build a STEMlab 122.88-16 SDR hardware compatible version
-#define STEMLAB_122_16
-
 // Define CHARLY25 for Charly 25 specific builds
 #define CHARLY25
 
@@ -157,7 +154,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20181219"
+#define SDR_APP_VERSION "20181227"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -567,6 +564,9 @@ bool hamlab_present = false;
 uint8_t C25_TRX_ID = 0;
 long c25_command_line_trx_board_id = 0;
 
+// Charly 25 specific FPGA model differentiation
+uint8_t c25_fpga_model = 0;
+
 void c25_detect_hardware(void)
 {
 	uint8_t input_register[1];
@@ -872,6 +872,25 @@ void c25_detect_hardware(void)
 
 	// Version and hardware info for debugging only!
 	fprintf(stderr, "Version %s with the following hardware is present:\n", SDR_APP_VERSION);
+
+	switch (c25_fpga_model)
+	{
+		case 0:
+			fprintf(stderr, "- FPGA Z10 by default\n");
+		break;
+
+		case 1:
+			fprintf(stderr, "- FPGA Z10 specified\n");
+		break;
+
+		case 2:
+			fprintf(stderr, "- FPGA Z20 specified\n");
+		break;
+
+		default:
+			fprintf(stderr, "- FPGA type unknown (prototype present?)\n");
+		break;
+	}
 
 	if (charly25_present) fprintf(stderr, "- Charly 25 with ");
 	if (hamlab_present) fprintf(stderr, "- HAMlab with ");
@@ -1472,13 +1491,8 @@ int main(int argc, char *argv[])
 	float scale, ramp[1024], a[4] = { 0.35875, 0.48829, 0.14128, 0.01168 };
 
 #ifdef CHARLY25
-#ifdef STEMLAB_122_16
-	// Changed last byte from 1 to 101 to identify as STEMlab with a Xilinx Zynq 7020 FPGA instead of Hermes device in the frontend software
-	uint8_t reply[11] = { 0xef, 0xfe, 2, 0, 0, 0, 0, 0, 0, 32, 101 };
-#else
 	// Changed last byte from 1 to 100 to identify as Red Pitaya / STEMlab with a Xilinx Zynq 7010 FPGA instead of Hermes device in the frontend software
 	uint8_t reply[11] = { 0xef, 0xfe, 2, 0, 0, 0, 0, 0, 0, 32, 100 };
-#endif
 #else
 	uint8_t reply[11] = { 0xef, 0xfe, 2, 0, 0, 0, 0, 0, 0, 32, 1 };
 #endif
@@ -1513,20 +1527,46 @@ int main(int argc, char *argv[])
 	uint32_t *code0 = (uint32_t *) buffer[0];  // fast access to code of first buffer
 #endif
 
-	c25_command_line_trx_board_id = (argc == 7) ? strtol(argv[6], NULL, 10) : -1;
-	argc = 6;
-#endif
+	c25_command_line_trx_board_id = -1;
 
-	for(i = 0; i < 5; ++i)
+	if (argc > 6)
 	{
-		errno = 0;
-		number = (argc == 6) ? strtol(argv[i + 1], &end, 10) : -1;
-		if(errno != 0 || end == argv[i + 1] || number < 1 || number > 2)
+		c25_fpga_model = (strncasecmp(argv[6], "z20\0", 3) == 0) ? 2 : 1;
+
+		if (c25_fpga_model > 1)
 		{
-			printf("Usage: sdr-transceiver-hpsdr 1|2 1|2 1|2 1|2 1|2\n");
-			return EXIT_FAILURE;
+			// Change last byte from 100 to 101 to identify as STEMlab with a Xilinx Zynq 7020 FPGA instead of Hermes device in the frontend software
+			reply[10] = 101;
 		}
-		chan |= (number - 1) << i;
+
+		if (argc > 7)
+		{
+			c25_command_line_trx_board_id = strtol(argv[7], NULL, 10);
+		}
+
+		argc = 6;
+	}
+
+	// Be benign to experimental users:
+	// If this program is invoked with less than 5 arguments, assume 1 2 2 1 2
+	if (argc < 6)
+	{
+		chan = 0x16;
+	}
+	else
+#endif
+	{
+		for(i = 0; i < 5; ++i)
+		{
+			errno = 0;
+			number = (argc == 6) ? strtol(argv[i + 1], &end, 10) : -1;
+			if(errno != 0 || end == argv[i + 1] || number < 1 || number > 2)
+			{
+				printf("Usage: sdr-transceiver-hpsdr 1|2 1|2 1|2 1|2 1|2\n");
+				return EXIT_FAILURE;
+			}
+			chan |= (number - 1) << i;
+		}
 	}
 
 	if ((fd = open("/dev/mem", O_RDWR)) < 0)
@@ -1704,27 +1744,32 @@ int main(int argc, char *argv[])
 	/* set all GPIO pins to low */
 	*gpio_out = 0;
 
-#ifdef STEMLAB_122_16
-	/* set default rx phase increment */
-	*rx_freq[0] = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
-	*rx_freq[1] = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
+#ifdef CHARLY25
+	if (c25_fpga_model > 1)
+	{
+		/* set default rx phase increment */
+		*rx_freq[0] = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
+		*rx_freq[1] = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
 
-	/* set default rx sample rate */
-	*rx_rate = 1280;
+		/* set default rx sample rate */
+		*rx_rate = 1280;
 
-	/* set default tx phase increment */
-	*tx_freq = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
-#else
-	/* set default rx phase increment */
-	*rx_freq[0] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
-	*rx_freq[1] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
-
-	/* set default rx sample rate */
-	*rx_rate = 1000;
-
-	/* set default tx phase increment */
-	*tx_freq = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
+		/* set default tx phase increment */
+		*tx_freq = (uint32_t)floor(600000 / 122.88e6 * (1 << 30) + 0.5);
+	}
+	else
 #endif
+	{
+		/* set default rx phase increment */
+		*rx_freq[0] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
+		*rx_freq[1] = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
+
+		/* set default rx sample rate */
+		*rx_rate = 1000;
+
+		/* set default tx phase increment */
+		*tx_freq = (uint32_t)floor(600000 / 125.0e6 * (1 << 30) + 0.5);
+	}
 
 	/* set tx ramp */
 	size = 1001;
@@ -1740,17 +1785,22 @@ int main(int argc, char *argv[])
 	}
 	*tx_size = size;
 
-#ifdef STEMLAB_122_16
-	/* set default tx level */
-	*tx_level = 32766;
-	/* set ps level */
-	*ps_level = 18716;
-#else
-	/* set default tx level */
-	*tx_level = 32110;
-	/* set ps level */
-	*ps_level = 23080;
+#ifdef CHARLY25
+	if (c25_fpga_model > 1)
+	{
+		/* set default tx level */
+		*tx_level = 32766;
+		/* set ps level */
+		*ps_level = 18716;
+	}
+	else
 #endif
+	{
+		/* set default tx level */
+		*tx_level = 32110;
+		/* set ps level */
+		*ps_level = 23080;
+	}
 
 	/* set default tx mux channel */
 	tx_mux[16] = 0;
@@ -2266,35 +2316,44 @@ uint8_t ptt, boost;
 
 		/* set rx sample rate */
 		rate = frame[1] & 3;  // C1: Bit 0-1 - Speed (00 = 48kHz, 01 = 96kHz, 10 = 192kHz, 11 = 384kHz)
-		switch (frame[1] & 3)
+
+#ifdef CHARLY25
+		if (c25_fpga_model > 1)
 		{
-#ifdef STEMLAB_122_16
-		case 0:
-			*rx_rate = 1280;
-			break;
-		case 1:
-			*rx_rate = 640;
-			break;
-		case 2:
-			*rx_rate = 320;
-			break;
-		case 3:
-			*rx_rate = 160;
-			break;
-#else
-		case 0:
-			*rx_rate = 1000;
-			break;
-		case 1:
-			*rx_rate = 500;
-			break;
-		case 2:
-			*rx_rate = 250;
-			break;
-		case 3:
-			*rx_rate = 125;
-			break;
+			switch (frame[1] & 3)
+			{
+			case 0:
+				*rx_rate = 1280;
+				break;
+			case 1:
+				*rx_rate = 640;
+				break;
+			case 2:
+				*rx_rate = 320;
+				break;
+			case 3:
+				*rx_rate = 160;
+				break;
+			}
+		}
+		else
 #endif
+		{
+			switch (frame[1] & 3)
+			{
+			case 0:
+				*rx_rate = 1000;
+				break;
+			case 1:
+				*rx_rate = 500;
+				break;
+			case 2:
+				*rx_rate = 250;
+				break;
+			case 3:
+				*rx_rate = 125;
+				break;
+			}
 		}
 
 #ifdef CHARLY25
@@ -2390,11 +2449,14 @@ uint8_t ptt, boost;
 
 		if (c25_tx_freq < freq_min || c25_tx_freq > freq_max) break;
 
-#ifdef STEMLAB_122_16
-		*tx_freq = (uint32_t)floor(c25_tx_freq / 122.88e6 * (1 << 30) + 0.5);
-#else
-		*tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
-#endif
+		if (c25_fpga_model > 1)
+		{
+			*tx_freq = (uint32_t)floor(c25_tx_freq / 122.88e6 * (1 << 30) + 0.5);
+		}
+		else
+		{
+			*tx_freq = (uint32_t)floor(c25_tx_freq / 125.0e6 * (1 << 30) + 0.5);
+		}
 
 		if (c25_rx1_bpf_present)
 		{
@@ -2425,11 +2487,7 @@ uint8_t ptt, boost;
 		freq = ntohl(*(uint32_t *)(frame + 1));
 		if (freq < freq_min || freq > freq_max) break;
 
-#ifdef STEMLAB_122_16
-		*tx_freq = (uint32_t)floor(freq / 122.88e6 * (1 << 30) + 0.5);
-#else
 		*tx_freq = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
-#endif
 
 		if (freq_data[0] != freq)
 		{
@@ -2464,11 +2522,14 @@ uint8_t ptt, boost;
 
 		if (c25_rx1_freq < freq_min || c25_rx1_freq > freq_max) break;
 
-#ifdef STEMLAB_122_16
-		*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 122.88e6 * (1 << 30) + 0.5);
-#else
-		*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 125.0e6 * (1 << 30) + 0.5);
-#endif
+		if (c25_fpga_model > 1)
+		{
+			*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 122.88e6 * (1 << 30) + 0.5);
+		}
+		else
+		{
+			*rx_freq[0] = (uint32_t)floor(c25_rx1_freq / 125.0e6 * (1 << 30) + 0.5);
+		}
 
 		if (rx_sync_data) *rx_freq[1] = *rx_freq[0];
 
@@ -2495,11 +2556,7 @@ uint8_t ptt, boost;
 		freq = ntohl(*(uint32_t *)(frame + 1));
 		if (freq < freq_min || freq > freq_max) break;
 
-#ifdef STEMLAB_122_16
-		*rx_freq[0] = (uint32_t)floor(freq / 122.88e6 * (1 << 30) + 0.5);
-#else
 		*rx_freq[0] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
-#endif
 
 		if (rx_sync_data) *rx_freq[1] = *rx_freq[0];
 		if (freq_data[1] != freq)
@@ -2542,11 +2599,14 @@ uint8_t ptt, boost;
 
 		if (c25_rx2_freq < freq_min || c25_rx2_freq > freq_max) break;
 
-#ifdef STEMLAB_122_16
-		*rx_freq[1] = (uint32_t)floor(c25_rx2_freq / 122.88e6 * (1 << 30) + 0.5);
-#else
-		*rx_freq[1] = (uint32_t)floor(c25_rx2_freq / 125.0e6 * (1 << 30) + 0.5);
-#endif
+		if (c25_fpga_model > 1)
+		{
+			*rx_freq[1] = (uint32_t)floor(c25_rx2_freq / 122.88e6 * (1 << 30) + 0.5);
+		}
+		else
+		{
+			*rx_freq[1] = (uint32_t)floor(c25_rx2_freq / 125.0e6 * (1 << 30) + 0.5);
+		}
 
 		if (freq_data[2] != c25_rx2_freq)
 		{
@@ -2560,16 +2620,11 @@ uint8_t ptt, boost;
 		break;
 #endif
 
-
 #ifndef CHARLY25
 		freq = ntohl(*(uint32_t *)(frame + 1));
 		if (freq < freq_min || freq > freq_max) break;
 
-#ifdef STEMLAB_122_16
-		*rx_freq[1] = (uint32_t)floor(freq / 122.88e6 * (1 << 30) + 0.5);
-#else
 		*rx_freq[1] = (uint32_t)floor(freq / 125.0e6 * (1 << 30) + 0.5);
-#endif
 
 		if (freq_data[2] != freq)
 		{
@@ -2663,19 +2718,18 @@ uint8_t ptt, boost;
 		}
 		else
 		{
-#ifdef STEMLAB_122_16
-			*tx_level = (int16_t)floor(data * 128.494 + 0.5);
-#else
 			*tx_level = (int16_t)floor(data * 125.92 + 0.5);
-#endif
 		}
 #else
 		data = frame[1];
-#ifdef STEMLAB_122_16
-		*tx_level = (int16_t)floor(data * 128.494 + 0.5);
-#else
-		*tx_level = (int16_t)floor(data * 125.92 + 0.5);
-#endif
+		if (c25_fpga_model > 1)
+		{
+			*tx_level = (int16_t)floor(data * 128.494 + 0.5);
+		}
+		else
+		{
+			*tx_level = (int16_t)floor(data * 125.92 + 0.5);
+		}
 #endif
 
 		/* configure microphone boost */
@@ -3362,16 +3416,16 @@ void *c25_adc_handler(void *arg)
 			// Set single-ended input channel
 			switch (channel)
 			{
-				case (0):
+				case 0:
 					config |= 0x0040;
 					break;
-				case (1):
+				case 1:
 					config |= 0x0050;
 					break;
-				case (2):
+				case 2:
 					config |= 0x0060;
 					break;
-				case (3):
+				case 3:
 					config |= 0x0070;
 					break;
 			}
