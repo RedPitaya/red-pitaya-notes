@@ -1,6 +1,6 @@
 {
     "name": "STEMlab SDR transceiver",
-    "version": "0.94-BUILD_NUMBER",
+    "version": "0.98-BUILD_NUMBER",
     "revision": "REVISION",
     "description": "SDR transceiver emulating a HPSDR transceiver with one network interface module, two receivers and one transmitter."
 }
