@@ -49,6 +49,7 @@
 24.11.2018 DG8MG: Improved the TCP protocol handling based on a patch from Christoph / DL1YCF.
 29.11.2018 DG8MG: Extended the TCP protocol handling to support the Red Pitaya device detection over different subnets.
 27.12.2018 DG8MG: Added support for the new STEMlab 122.88-16 SDR hardware.
+11.02.2019 DG8MG: Added support to bypass the shortwave lowpass filters.
 */
 
 // DG8MG
@@ -154,7 +155,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20181227"
+#define SDR_APP_VERSION "20190218"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -537,6 +538,7 @@ void icom_write()
 
 #ifdef CHARLY25
 bool c25_mox = false;
+bool c25_sw_lpf_bypass = false;
 uint16_t c25_i2c_data = 0;
 uint16_t c25_ext_board_i2c_data = 0;
 uint8_t c25_bcd_encoder_i2c_data = 0;
@@ -956,7 +958,7 @@ uint16_t c25pp_switch_tx_lpf(void)
 	uint16_t c25pp_tx_lpf_i2c_new_data = c25_i2c_data & 0x004f;
 
 	// Switch LPF depending on TX frequency
-	if (C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ)  // 6m LPF
+	if ((C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ) || c25_sw_lpf_bypass == true)  // 6m LPF
 	{
 		c25pp_tx_lpf_i2c_new_data |= 1 << 8;
 	}
@@ -1021,7 +1023,7 @@ uint16_t c25ab_switch_tx_lpf(void)
 	uint16_t c25ab_tx_lpf_i2c_new_data = c25_i2c_data & 0x004f;
 
 	// Switch LPF depending on TX frequency
-	if (C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ)  // 6m LPF
+	if ((C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ) || c25_sw_lpf_bypass == true)  // 6m LPF
 	{
 		c25ab_tx_lpf_i2c_new_data |= 1 << 8;
 	}
@@ -1086,7 +1088,7 @@ uint16_t c25lc_switch_tx_lpf(void)
 	uint16_t c25lc_tx_lpf_i2c_new_data = c25_i2c_data & 0x00ff;
 
 	// Switch LPF depending on TX frequency
-	if (C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ)  // 10m LPF
+	if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || c25_sw_lpf_bypass == true)  // 10m LPF
 	{
 		c25lc_tx_lpf_i2c_new_data |= 1 << 8;
 	}
@@ -1167,8 +1169,12 @@ uint16_t c25_switch_rx_bpf(uint8_t c25_rx_bpf_addr, uint32_t c25_rx_freq)
 		}
 	}
 
-	// Switch BPF depending on RX frequency
-	if (C25_6M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_6M_LOW_FREQ)  // 6m BPF
+	// Switch BPF depending on the LPF bypass option and the RX frequency
+	if (c25_sw_lpf_bypass == true)
+	{
+		c25_rx_bpf_i2c_new_data |= 1 << 7;
+	}
+	else if (C25_6M_HIGH_FREQ > c25_rx_freq && c25_rx_freq >= C25_6M_LOW_FREQ)  // 6m BPF
 	{
 		c25_rx_bpf_i2c_new_data |= 1 << 12;
 	}
@@ -2729,6 +2735,15 @@ uint8_t ptt, boost;
 		else
 		{
 			*tx_level = (int16_t)floor(data * 125.92 + 0.5);
+		}
+
+		if (frame[2] & 0x40)
+		{
+			c25_sw_lpf_bypass = true;
+		}
+		else
+		{
+			c25_sw_lpf_bypass = false;
 		}
 #endif
 
