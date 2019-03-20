@@ -155,7 +155,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20190218"
+#define SDR_APP_VERSION "20190320"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -512,7 +512,7 @@ void icom_write()
 	else if (freq < 20000000) band = 0x18; /*  17m */
 	else if (freq < 22000000) band = 0x21; /*  15m */
 	else if (freq < 26000000) band = 0x24; /*  12m */
-	else band = 0x28;                     /*  10m */
+	else band = 0x28;                      /*  10m */
 
 	switch (band)
 	{
@@ -618,17 +618,17 @@ void c25_detect_hardware(void)
 		// No FAKED board id is given, so work with the automatic trx board id detection
 		else
 		{
-			// Uninvert input - default is 0xf0 at PCA9557 I/O chip
+			// Address the PCA9557 as ID chip
 			ioctl(i2c_fd, I2C_SLAVE, C25_TRX_ID_ADDR);
 
 			// Check if an ID chip on C25_TRX_ID_ADDR is present
-			if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) < 0)
+			if (read(i2c_fd, input_register, 1) < 0)
 			{
-				// it's not present there, so try it with an ID chip on C25_NEW_TRX_ID_ADDR
+				// it's not present there, so try with an ID chip on C25_NEW_TRX_ID_ADDR
 				ioctl(i2c_fd, I2C_SLAVE, C25_NEW_TRX_ID_ADDR);
 			}
 
-			// Check if it works with an ID chip on C25_NEW_TRX_ID_ADDR
+			// Check if a (new) ID chip is present by uninverting all input pins
 			if (i2c_write_addr_data8(i2c_fd, 0x02, 0x00) >= 0)
 			{
 				// set pins for input
@@ -3156,7 +3156,12 @@ void *handler_ep6(void *arg)
 		else
 #endif
 		{
-			sendmmsg(sock_ep2, datagram, m, 0);
+			if (sendmmsg(sock_ep2, datagram, m, 0) < 0)
+			{
+#ifdef DEBUG_UDP
+				fprintf(stderr, "DEBUG_UDP: RP -> PC: UDP sendmmsg error occurred at sequence number: %u !\n", counter);
+#endif
+			}
 		}
 
 #ifdef DEBUG_PROT
