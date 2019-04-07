@@ -50,6 +50,7 @@
 29.11.2018 DG8MG: Extended the TCP protocol handling to support the Red Pitaya device detection over different subnets.
 27.12.2018 DG8MG: Added support for the new STEMlab 122.88-16 SDR hardware.
 11.02.2019 DG8MG: Added support to bypass the shortwave lowpass filters.
+07.04.2019 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/stemlab-sdr-notes/commit/efbb1b16bfe93eb48b34a00a7a3b6ddfff378569
 */
 
 // DG8MG
@@ -155,7 +156,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20190320"
+#define SDR_APP_VERSION "20190407"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -1795,7 +1796,7 @@ int main(int argc, char *argv[])
 	if (c25_fpga_model > 1)
 	{
 		/* set default tx level */
-		*tx_level = 32766;
+		*tx_level = 21800;
 		/* set ps level */
 		*ps_level = 18716;
 	}
@@ -2730,7 +2731,7 @@ uint8_t ptt, boost;
 		data = frame[1];
 		if (c25_fpga_model > 1)
 		{
-			*tx_level = (int16_t)floor(data * 128.494 + 0.5);
+			*tx_level = (int16_t)floor(data * 85.490 + 0.5);
 		}
 		else
 		{

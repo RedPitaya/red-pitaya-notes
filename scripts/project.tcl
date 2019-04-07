@@ -9,6 +9,8 @@ create_project -part $part_name $project_name tmp
 
 set_property IP_REPO_PATHS tmp/cores [current_project]
 
+update_ip_catalog
+
 set bd_path tmp/$project_name.srcs/sources_1/bd/system
 
 create_bd_design system
@@ -82,7 +84,7 @@ if {[llength $files] > 0} {
   add_files -norecurse $files
 }
 
-set files [glob -nocomplain cfg/*.xdc]
+set files [glob -nocomplain cfg/*.xdc projects/$project_name/*.xdc]
 if {[llength $files] > 0} {
   add_files -norecurse -fileset constrs_1 $files
 }
