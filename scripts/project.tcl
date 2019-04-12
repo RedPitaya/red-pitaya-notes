@@ -1,4 +1,3 @@
-
 set project_name [lindex $argv 0]
 
 set part_name [lindex $argv 1]
@@ -9,11 +8,17 @@ create_project -part $part_name $project_name tmp
 
 set_property IP_REPO_PATHS tmp/cores [current_project]
 
+update_ip_catalog
+
 set bd_path tmp/$project_name.srcs/sources_1/bd/system
 
 create_bd_design system
-
-source cfg/ports.tcl
+ 
+if { $project_name eq "sdr_transceiver_hpsdr_z20" } {
+  source cfg/ports_z20.tcl
+} else {
+  source cfg/ports.tcl
+}
 
 proc cell {cell_vlnv cell_name {cell_props {}} {cell_ports {}}} {
   set cell [create_bd_cell -type ip -vlnv $cell_vlnv $cell_name]
@@ -82,7 +87,7 @@ if {[llength $files] > 0} {
   add_files -norecurse $files
 }
 
-set files [glob -nocomplain cfg/*.xdc]
+set files [glob -nocomplain cfg/*.xdc projects/$project_name/*.xdc]
 if {[llength $files] > 0} {
   add_files -norecurse -fileset constrs_1 $files
 }
