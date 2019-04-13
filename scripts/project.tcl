@@ -15,7 +15,7 @@ set bd_path tmp/$project_name.srcs/sources_1/bd/system
 create_bd_design system
  
 if { $project_name eq "sdr_transceiver_hpsdr_z20" } {
-  source cfg/ports_z20.tcl
+  source cfg_z20/ports.tcl
 } else {
   source cfg/ports.tcl
 }
@@ -87,9 +87,16 @@ if {[llength $files] > 0} {
   add_files -norecurse $files
 }
 
+if { $project_name eq "sdr_transceiver_hpsdr_z20" } {
+set files [glob -nocomplain cfg_z20/*.xdc projects/$project_name/*.xdc]
+if {[llength $files] > 0} {
+  add_files -norecurse -fileset constrs_1 $files
+}
+} else {
 set files [glob -nocomplain cfg/*.xdc projects/$project_name/*.xdc]
 if {[llength $files] > 0} {
   add_files -norecurse -fileset constrs_1 $files
+}
 }
 
 set_property VERILOG_DEFINE {TOOL_VIVADO} [current_fileset]
