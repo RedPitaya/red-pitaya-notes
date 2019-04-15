@@ -51,6 +51,7 @@
 27.12.2018 DG8MG: Added support for the new STEMlab 122.88-16 SDR hardware.
 11.02.2019 DG8MG: Added support to bypass the shortwave lowpass filters.
 13.04.2019 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/stemlab-sdr-notes/commit/8d85bc4c0b6836fe7d3303845044e8f8d7f47fd2
+14.04.2019 DG8MG: Merged the TCP protocol handling changes and the TX attenuator emulator from Christoph / DL1YCF.
 */
 
 // DG8MG
@@ -115,6 +116,11 @@
 // #define DEBUG_ADC_PA_CUR
 // DG8MG
 
+// DL1YCF
+// Define TXATT_EMU for emulating a TX attenuator for the PURESIGNAL feedback channel
+// #define TXATT_EMU
+// DL1YCF
+
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -156,7 +162,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20190413"
+#define SDR_APP_VERSION "20190414"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -227,8 +233,23 @@ uint16_t c25_adc_conversion_register[4] = {0};
 void *c25_adc_handler(void *arg);
 
 #ifdef CHARLY25_TCP
-int sock_TCP_Server = -1;
-int sock_TCP_Client = -1;
+static int sock_TCP_Server = -1;
+static int sock_TCP_Client = -1;
+#endif
+
+#ifdef TXATT_EMU
+//
+// DL1YCF: emulate attenuation on TX feedback channel for PureSignal
+//         (only for boards that do not have such an attenuator)
+//         To apply an attenuation of x dB, multiply the samples
+//         with att_emu_num[x-1] and shift-right by att_emu_div[x-1] bytes.
+//
+static int TXATT_emulation=0;
+static int TXATT_num, TXATT_div;
+const int att_emu_num[31]={228,203,181,162,144,128,229,204,182,162,144,129,229,
+                           204,182,162,145,129,230,205,183,163,145,129,230,205,
+                           183,163,145,130,231};
+const int att_emu_div[31]={8,8,8,8,8,8,9,9,9,9,9,9,10,10,10,10,10,10,11,11,11,11,11,11,12,12,12,12,12,12,13};
 #endif
 
 #endif
@@ -375,7 +396,7 @@ void calc_log_lookup()
 	for(index = 1; index < 256; ++index)
 	{
 		value = -40.0 * log10((float)index / 255.0);
-		if(value > 63.0)
+		if (value > 63.0)
 		{
 			att = 63;
 		}
@@ -467,7 +488,7 @@ inline int lower_bound(int *array, int size, int value)
   while(i < j)
   {
 	k = i + (j - i) / 2;
-	if(value > array[k]) i = k + 1;
+	if (value > array[k]) i = k + 1;
 	else j = k;
   }
   return i;
@@ -1530,6 +1551,7 @@ int main(int argc, char *argv[])
 #ifdef CHARLY25
 
 #ifdef CHARLY25_TCP
+	int udp_retries = 0;
 	int bytes_read, bytes_left;
 	uint32_t *code0 = (uint32_t *) buffer[0];  // fast access to code of first buffer
 #endif
@@ -1663,9 +1685,9 @@ int main(int argc, char *argv[])
 				i2c_dac1 = 1;
 			}
 		}
-		if(ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO) >= 0)
+		if (ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO) >= 0)
 		{
-			if(i2c_write_addr_data16(i2c_fd, 0x1, i2c_ard_frx1_data) > 0)
+			if (i2c_write_addr_data16(i2c_fd, 0x1, i2c_ard_frx1_data) > 0)
 			{
 				i2c_arduino = 1;
 			}
@@ -1887,7 +1909,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef CHARLY25_TCP
-	if ((sock_TCP_Server = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) < 0)
+	if ((sock_TCP_Server = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
 		perror("socket tcp");
 		return EXIT_FAILURE;
@@ -1907,6 +1929,10 @@ int main(int argc, char *argv[])
 	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_SNDBUF, (const char *)&sndbufsize, sizeof(int));
 	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_RCVBUF, (const char *)&rcvbufsize, sizeof(int));
 
+	tv.tv_sec = 0;
+	tv.tv_usec = 1000;
+	setsockopt(sock_TCP_Server, SOL_SOCKET, SO_RCVTIMEO, (void *)&tv, sizeof(tv));
+
 	if (bind(sock_TCP_Server, (struct sockaddr *)&addr_ep2, sizeof(addr_ep2)) < 0)
 	{
 		perror("bind tcp");
@@ -1914,6 +1940,10 @@ int main(int argc, char *argv[])
 	}
 
 	listen(sock_TCP_Server, 1024);
+
+	// This replaces the (non-portable) SOCK_NONBLOCK option in the socket() call
+	int flags = fcntl(sock_TCP_Server, F_GETFL, 0);
+	fcntl(sock_TCP_Server, F_SETFL, flags | O_NONBLOCK);
 
 #ifdef DEBUG_TCP
 	fprintf(stderr, "DEBUG_TCP: RP <--> PC: Listening for TCP client connection request\n");
@@ -1964,16 +1994,6 @@ int main(int argc, char *argv[])
 		ts.tv_nsec = 1000000;
 
 #ifdef CHARLY25_TCP
-		if (sock_TCP_Client < 0)
-		{
-			if((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) > -1)
-			{
-#ifdef DEBUG_TCP
-				fprintf(stderr, "DEBUG_TCP: RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
-#endif
-			}
-		}
-
 		if (sock_TCP_Client > -1)
 		{
 			// Using recvmmsg with a time-out should be used for a byte-stream protocol like TCP
@@ -1991,13 +2011,6 @@ int main(int argc, char *argv[])
 				if (size < 0) break;
 				bytes_read += size;
 				bytes_left -= size;
-
-#ifdef DEBUG_TCP
-				if (bytes_read != 1032)
-				{
-					fprintf(stderr,"DEBUG_TCP: bytes_read: %d, bytes_left: %d\n", bytes_read, bytes_left);
-				}
-#endif
 			}
 
 			if (size >= 0)
@@ -2013,14 +2026,8 @@ int main(int argc, char *argv[])
 					datagram[0].msg_len = 63;
 				}
 
-				// In the case of a METIS-stop packet, change the size to 64
-				if (*code0 == 0x0004feef)
-				{
-					datagram[0].msg_len = 64;
-				}
-
-				// In the case of a METIS-start TCP packet, change the size to 64
-				if (*code0 == 0x1104feef)
+				// In the case of a METIS-start/stop packet, change the size to 64
+				if ((*code0 & 0x00ffffff)== 0x0004feef)
 				{
 					datagram[0].msg_len = 64;
 				}
@@ -2030,9 +2037,19 @@ int main(int argc, char *argv[])
 #endif
 		{
 			size = recvmmsg(sock_ep2, datagram, 8, 0, &ts);
+#ifdef CHARLY25_TCP
+			if (size > 0)
+			{
+				udp_retries = 0;
+			}
+			else
+			{
+				udp_retries++;
+			}
+#endif
 
 #ifdef DEBUG_UDP
-			if (size > 0)
+			if (size >= 0)
 			{
 				fprintf(stderr,"DEBUG_UDP: size: %d\n", size);
 			}
@@ -2044,6 +2061,23 @@ int main(int argc, char *argv[])
 			perror("recvfrom");
 			return EXIT_FAILURE;
 		}
+
+#ifdef CHARLY25_TCP
+		// If nothing has arrived via UDP for some time, try to open TCP connection.
+		// "for some time" means 25 subsequent un-successful UDP rcvmmsg() calls
+        if (sock_TCP_Client < 0 && udp_retries > 25)
+        {
+        	if ((sock_TCP_Client = accept(sock_TCP_Server, NULL, NULL)) > -1)
+            {
+#ifdef DEBUG_TCP
+            	fprintf(stderr, "DEBUG_TCP: RP <--> PC: sock_TCP_Client: %d connected to sock_TCP_Server: %d\n", sock_TCP_Client, sock_TCP_Server);
+#endif
+            }
+			
+			// This avoids firing accept() too often if it constantly fails
+			udp_retries = 0;
+		}
+#endif
 
 		for (i = 0; i < size; ++i)
 		{
@@ -2071,7 +2105,9 @@ int main(int argc, char *argv[])
 				// sequence number check
 				seqnum = ((buffer[i][4]&0xFF)<<24) + ((buffer[i][5]&0xFF)<<16) + ((buffer[i][6]&0xFF)<<8) + (buffer[i][7]&0xFF);
 
-				if (seqnum != last_seqnum + 1)
+				// A "wrong" sequence number of zero normally is no error condition
+				// (restart of the SDR program)
+				if (seqnum != last_seqnum + 1 && seqnum != 0)
 				{
 					fprintf(stderr,"DEBUG_SEQ: SEQ ERROR: last %ld, recvd %ld\n", (long)last_seqnum, (long)seqnum);
 				}
@@ -2131,26 +2167,38 @@ int main(int argc, char *argv[])
 				}
 
 				reply[2] = 2 + active_thread;
+#ifdef CHARLY25_TCP
+				// it is safer to have a unique "packet length" when using TCP
+				memset(buffer[i], 0, 1032);
+#else
 				memset(buffer[i], 0, 60);
+#endif
 				memcpy(buffer[i], reply, 11);
 
 #ifdef CHARLY25_TCP
 				if (sock_TCP_Client > -1)
 				{
-					if (send(sock_TCP_Client, buffer[i], 60, 0) < 0)
+					// Use TCP:
+					// We will get into trouble if handler_ep6 is sending TCP while we are responding by TCP
+					// to a METIS detection request. Therefore we WILL NOT RESPOND if the radio is already running.
+					if (!active_thread)
 					{
+						if (send(sock_TCP_Client, buffer[i], 1032, 0) < 0)
+					  	{
 #ifdef DEBUG_TCP
-						fprintf(stderr, "DEBUG_TCP: RP -> PC: TCP send error occurred when responding to an incoming Metis detection request!\n");
+							fprintf(stderr, "DEBUG_TCP: RP -> PC: TCP send error occurred when responding to an incoming Metis detection request!\n");
 #endif
-					}
+					  	}
 
-					// close the TCP socket which was only used for the detection
-					close(sock_TCP_Client);
-					sock_TCP_Client = -1;
+					    // close the TCP socket which was only used for the detection
+					    close(sock_TCP_Client);
+					    sock_TCP_Client = -1;
+					}
 				}
 				else
 #endif
 				{
+					// Use UDP
 					sendto(sock_ep2, buffer[i], 60, 0, (struct sockaddr *)&addr_from[i], sizeof(addr_from[i]));
 				}
 
@@ -2185,17 +2233,6 @@ int main(int argc, char *argv[])
 				break;
 
 				// start the Red Pitaya to PC transmission via handler_ep6
-#ifdef CHARLY25_TCP
-				case 0x1104feef:
-
-
-#ifdef DEBUG_TCP
-				fprintf(stderr, "DEBUG_TCP: PC -> RP: TCP METIS-start message received / code: 0x%08x\n", code);
-#endif
-
-				/* FALLTHROUGH */
-#endif
-
 				case 0x0104feef:
 				case 0x0204feef:
 				case 0x0304feef:
@@ -2401,7 +2438,7 @@ uint8_t ptt, boost;
 			}
 		}
 
-		if(i2c_arduino)
+		if (i2c_arduino)
 		{
 			/*
 			24 bit data field: 0RRR00TT0XXXXXXX0YYYYYYY
@@ -2410,7 +2447,7 @@ uint8_t ptt, boost;
 			XXXXXXX=RX OC
 			YYYYYYY=TX OC
 			*/
-			if(frame[0] & 0x01)
+			if (frame[0] & 0x01)
 			{
 				data32 = i2c_ard_ocant_data & 0x00fc7f00;
 				data32 |= (frame[2] >> 1); /* add back in OC bits */
@@ -2421,7 +2458,7 @@ uint8_t ptt, boost;
 				data32 = i2c_ard_ocant_data & 0x0003007f;
 				data32 |= (frame[2] << 7); /* add back in OC bits */
 				data8 = (frame[3] & 0x60) >> 5; /* RX aux bits */
-				if(data8 == 0)
+				if (data8 == 0)
 				{
 					data32 |= (frame[4] & 0x03) << 20; /* use TX bit positions */
 				}
@@ -2431,7 +2468,7 @@ uint8_t ptt, boost;
 					data32 |= (data8 & 0x07) << 20; /* RX bit positions */
 				}
 			}
-			if(data32 != i2c_ard_ocant_data)
+			if (data32 != i2c_ard_ocant_data)
 			{
 				i2c_ard_ocant_data = data32;
 				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
@@ -2502,10 +2539,10 @@ uint8_t ptt, boost;
 			alex_write();
 			icom_write();
 			if (i2c_misc) misc_write();
-			if(i2c_arduino)
+			if (i2c_arduino)
 			{
 				data = freq / 1000;
-				if(data != i2c_ard_ftx_data)
+				if (data != i2c_ard_ftx_data)
 				{
 					i2c_ard_ftx_data = data;
 					ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
@@ -2578,10 +2615,10 @@ uint8_t ptt, boost;
 			alex_write();
 			if (i2c_misc) misc_write();
 
-			if(i2c_arduino)
+			if (i2c_arduino)
 			{
 				data = freq / 1000;
-				if(data != i2c_ard_frx1_data)
+				if (data != i2c_ard_frx1_data)
 				{
 					i2c_ard_frx1_data = data;
 					ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
@@ -2638,14 +2675,14 @@ uint8_t ptt, boost;
 			freq_data[2] = freq;
 			alex_write();
 			if (i2c_misc) misc_write();
-			if(i2c_arduino)
+			if (i2c_arduino)
 			{
 				data = freq / 1000;
-				if(data != i2c_ard_frx2_data)
+				if (data != i2c_ard_frx2_data)
 				{
-				i2c_ard_frx2_data = data;
-				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
-				i2c_write_addr_data16(i2c_fd, 0x02, data);
+					i2c_ard_frx2_data = data;
+					ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
+					i2c_write_addr_data16(i2c_fd, 0x02, data);
 				}
 			}
 		}
@@ -2705,7 +2742,7 @@ uint8_t ptt, boost;
 				i2c_write_addr_data16(i2c_fd, 0xa9, data << 8 | data);
 			}
 		}
-		else if(i2c_arduino)
+		else if (i2c_arduino)
 		{
 			/*
 			24 bit data field 000000BA000RRRRR00TTTTTT
@@ -2716,7 +2753,7 @@ uint8_t ptt, boost;
 			data32 = i2c_ard_txatt_data & 0x00001f00; /* remove TX att */
 			data32 |= log_table_lookup[data];
 			data32 |= (frame[3] & 0xc0) << 10;
-			if(data32 != i2c_ard_txatt_data)
+			if (data32 != i2c_ard_txatt_data)
 			{
 				i2c_ard_txatt_data = data32;
 				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
@@ -2770,16 +2807,16 @@ uint8_t ptt, boost;
 	case 20:
 	case 21:
 		rx_att_data = frame[4] & 0x1f;
-		if(i2c_misc)
+		if (i2c_misc)
 		{
 			data = frame[4] & 0x1f;
-			if(misc_data_0 != data)
+			if (misc_data_0 != data)
 			{
 				misc_data_0 = data;
 				misc_write();
 			}
 		}
-		if(i2c_arduino)
+		if (i2c_arduino)
 		{
 			/*
 			16 bit data field 000RRRRR000TTTTT
@@ -2788,7 +2825,7 @@ uint8_t ptt, boost;
 			*/
 			data = i2c_ard_rxatt_data & 0x00001f00; /* remove RX1 att */
 			data |= (frame[4] & 0x1f);
-			if(data != i2c_ard_rxatt_data)
+			if (data != i2c_ard_rxatt_data)
 			{
 				i2c_ard_rxatt_data = data;
 				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
@@ -2821,7 +2858,7 @@ uint8_t ptt, boost;
 		break;
 
 #ifndef CHARLY25
-		if(i2c_arduino)
+		if (i2c_arduino)
 		{
 			/*
 			16 bit data field 000RRRRR000TTTTT
@@ -2830,7 +2867,7 @@ uint8_t ptt, boost;
 			*/
 			data = i2c_ard_rxatt_data & 0x1f; /* remove RX2 att */
 			data |= (frame[1] & 0x1f) << 8;
-			if(data != i2c_ard_rxatt_data)
+			if (data != i2c_ard_rxatt_data)
 			{
 				i2c_ard_rxatt_data = data;
 				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
@@ -2843,7 +2880,7 @@ uint8_t ptt, boost;
 #ifdef CHARLY25
 	case 24:
 	case 25:
-		if(c25_ext_board_present)
+		if (c25_ext_board_present)
 		{
 			// C1: Bit 0-1 - RX2 12dB attenuator and RX2 24db attenuator, Bit 2-3 - RX2 18dB preamp 1 and 2, Bit 4 - unused, Bit 5 - RX2 Predistorsion switch, Bit 6 - VHF/UHF switch RX1, Bit 7 - VHF/UHF switch TX
 			// C2: Bit 0-4 - Step attenuator 0-31dB, Bit 5 - RP external OFF (SDR mode on), Bit 6 - RP TX channel 2 envelope modulation, Bit 7 - unused
@@ -2860,10 +2897,22 @@ uint8_t ptt, boost;
 		break;
 #endif
 
-#ifndef CHARLY25
 	case 28:
 	case 29:
-		if(i2c_arduino)
+#ifdef CHARLY25
+#ifdef TXATT_EMU
+		// DL1YCF: save the TX-Att data for later manipulation of the TX feedback channel
+		data = frame[3] & 0x1f;
+		
+		if (data != TXATT_emulation)
+		{
+			TXATT_emulation=data;
+            TXATT_num=att_emu_num[TXATT_emulation-1];
+            TXATT_div=att_emu_div[TXATT_emulation-1];
+		}
+#endif
+#else
+		if (i2c_arduino)
 		{
 			/*
 			24 bit data field 000000BA000RRRRR00TTTTTT
@@ -2873,15 +2922,15 @@ uint8_t ptt, boost;
 			*/
 			data32 = i2c_ard_txatt_data & 0x0003003f; /* remove RX att */
 			data32 |= (frame[3] & 0x1f) << 8;
-			if(data32 != i2c_ard_txatt_data)
+			if (data32 != i2c_ard_txatt_data)
 			{
 				i2c_ard_txatt_data = data32;
 				ioctl(i2c_fd, I2C_SLAVE, ADDR_ARDUINO);
 				i2c_write_addr_data24(i2c_fd, 0x05, data32);
 			}
 		}
-		break;
 #endif
+		break;
 
 	case 30:
 	case 31:
@@ -2931,6 +2980,9 @@ void *handler_ep6(void *arg)
 	uint8_t data3[4096];
 	uint8_t buffer[25 * 1032];
 	uint8_t *pointer;
+#ifdef TXATT_EMU
+	int8_t  *spnt, *dpnt;
+#endif
 	struct iovec iovec[25][1];
 	struct mmsghdr datagram[25];
 	uint8_t id[4] = { 0xef, 0xfe, 1, 6 };
@@ -3042,7 +3094,7 @@ void *handler_ep6(void *arg)
 			pointer[3] |= (*gpio_in & 7) | cw_ptt;
 
 #ifdef CHARLY25
-			if(c25_ext_board_present)
+			if (c25_ext_board_present)
 			{
 				if (header_offset == 8)
 				{
@@ -3072,7 +3124,7 @@ void *handler_ep6(void *arg)
 					fprintf(stderr, "DEBUG_ADC_TOTAL_CUR: c25_adc_conversion_register[0], pointer[6] and pointer[7]: %u, %u, %u\n",c25_adc_conversion_register[0], pointer[6], pointer[7]);
 #endif
 				}
-				else if(header_offset == 24)
+				else if (header_offset == 24)
 				{
 					// PA current from ADS 1015 Ain1
 					pointer[4] = (c25_adc_conversion_register[1] >> 8) & 0xff;
@@ -3100,7 +3152,7 @@ void *handler_ep6(void *arg)
 					pointer[6] = (value >> 8) & 0xff;
 					pointer[7] = value & 0xff;
 				}
-				else if(header_offset == 24)
+				else if (header_offset == 24)
 				{
 					value = xadc[153] >> 3;
 					pointer[4] = (value >> 8) & 0xff;
@@ -3113,26 +3165,64 @@ void *handler_ep6(void *arg)
 			memset(pointer, 0, 504);
 			for (j = 0; j < n; ++j)
 			{
+				// RX1 data
 				memcpy(pointer, data0 + data_offset, 6);
 				if (size > 8)
 				{
+					// RX2 data
 					memcpy(pointer + 6, data1 + data_offset, 6);
 				}
 #ifndef ANANXD
 				if (size > 14)
 				{
+					// RX3 data, usually PureSignal FeedBack channel
+#if defined(CHARLY25) && defined(TXATT_EMU)
+					if (TXATT_emulation == 0)
+					{
+						//
+					  	// TX attenuation is zero: just copy
+					  	//
+					  	memcpy(pointer + 12, data2 + data_offset, 6);
+					}
+					else
+					{
+						//
+						// Apply attenuation on this data.
+						// Cross fingers that this will not eat too much CPU time
+						// ... but on my RedPitaya it works.
+						//
+						dpnt = pointer + 12;         // destination
+						spnt = data2 + data_offset;  // source
+						value  = (int32_t) ((*((  signed char *) spnt++) <<16)         );
+						value |= (int32_t) ((*((unsigned char *) spnt++) << 8) & 0xFF00);
+						value |= (int32_t) ((*((unsigned char *) spnt++)     ) &   0xFF);
+						value=(value*TXATT_num) >> TXATT_div;
+						*dpnt++ = (value >> 16) & 0xFF;
+						*dpnt++ = (value >>  8) & 0xFF;
+						*dpnt++ = (value      ) & 0xFF;
+						value  = (int32_t) ((*((  signed char *) spnt++) <<16)         );
+						value |= (int32_t) ((*((unsigned char *) spnt++) << 8) & 0xFF00);
+						value |= (int32_t) ((*((unsigned char *) spnt++)     ) &   0xFF);
+						value=(value*TXATT_num) >> TXATT_div;
+						*dpnt++ = (value >> 16) & 0xFF;
+						*dpnt++ = (value >>  8) & 0xFF;
+						*dpnt++ = (value      ) & 0xFF;
+					}
+#else
 					memcpy(pointer + 12, data2 + data_offset, 6);
+#endif
 				}
 				if (size > 20)
 				{
+					// RX4 data, usually PureSignal TX channel
 					memcpy(pointer + 18, data3 + data_offset, 6);
 				}
 #else
-				if(size > 20)
+				if (size > 20)
 				{
 					memcpy(pointer + 18, data2 + data_offset, 6);
 				}
-				if(size > 26)
+				if (size > 26)
 				{
 					memcpy(pointer + 24, data3 + data_offset, 6);
 				}
@@ -3147,12 +3237,24 @@ void *handler_ep6(void *arg)
 #ifdef CHARLY25_TCP
 		if (sock_TCP_Client > -1)
 		{
-			if (sendmmsg(sock_TCP_Client, datagram, m, 0) < 0)
-			{
+			i=sendmmsg(sock_TCP_Client, datagram, m, 0);
 #ifdef DEBUG_TCP
+		  	if (i < 0)
+		  	{
 				fprintf(stderr, "DEBUG_TCP: RP -> PC: TCP sendmmsg error occurred at sequence number: %u !\n", counter);
+		  	}
+            if (i >= 0 && i < m)
+		  	{
+				fprintf(stderr, "DEBUG_TCP: RP -> PC: TCP sendmmsg too few datagrams sent!\n");
+		  	}
+		  	for (j = 0; j < i; j++)
+		  	{
+		    	if (datagram[j].msg_len < 1032)
+		    	{
+					fprintf(stderr,"Too few bytes sent, datagram=%d sent=%d\n", j, (int) datagram[j].msg_len);
+		    	}
+		  	}
 #endif
-			}
 		}
 		else
 #endif
