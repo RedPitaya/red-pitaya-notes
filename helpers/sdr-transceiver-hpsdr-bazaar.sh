@@ -25,4 +25,4 @@ revision=`git log -n1 --pretty=%h`
 
 sed -i "s/REVISION/$revision/; s/BUILD_NUMBER/$build_number/" $project_package/info/info.json
 
-zip -r $project_package-0.98-$build_number.zip $project_package
+zip -r $project_package-0.99-$build_number.zip $project_package
