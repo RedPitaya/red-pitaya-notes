@@ -1,14 +1,18 @@
 #!/bin/bash
+rw
+
 if [ -e "/dev/i2c-1" ]
 then
-  echo "HAMlab with i2c-mux is present."
-  hamrf -s
+  touch /opt/redpitaya/www/apps/hamlab.device
+  rohamrf -s
   gpiorelay -s
 else
-  echo "STEMlab without i2c-mux is present."
+  touch /opt/redpitaya/www/apps/stemlab.device
 fi
 
-killall sdr-transceiver-hpsdr
+ro
+
+killall -q sdr-transceiver-hpsdr
 
 if [[ $(fw_printenv hw_rev) = *"122-16"* ]]; then
   cat /opt/redpitaya/www/apps/stemlab_sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_z20.bit > /dev/xdevcfg

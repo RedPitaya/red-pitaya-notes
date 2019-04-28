@@ -1,11 +1,15 @@
 #!/bin/bash
-killall sdr-transceiver-hpsdr
+killall -q sdr-transceiver-hpsdr
+
+rw
 
 if [ -e "/dev/i2c-1" ]
 then
-  echo "HAMlab with i2c-mux is present."
   hamrf -i
   gpiorelay -i
+  rm /opt/redpitaya/www/apps/hamlab.device
 else
-  echo "STEMlab without i2c-mux is present."
+  rm /opt/redpitaya/www/apps/stemlab.device
 fi
+
+ro
