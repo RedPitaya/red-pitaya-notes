@@ -52,14 +52,12 @@
 11.02.2019 DG8MG: Added support to bypass the shortwave lowpass filters.
 13.04.2019 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/stemlab-sdr-notes/commit/8d85bc4c0b6836fe7d3303845044e8f8d7f47fd2
 14.04.2019 DG8MG: Merged the TCP protocol handling changes and the TX attenuator emulator from Christoph / DL1YCF.
+11.05.2019 DG8MG: Changed the behaviour of the low pass filter switching functions
 */
 
 // DG8MG
 // Define CHARLY25 for Charly 25 specific builds
 #define CHARLY25
-
-// Define CHARLY25LC_60M_BAND for 60m band usage together with the 40m LPF filter on a Charly 25LC board
-// #define CHARLY25LC_60M_BAND
 
 // Define CHARLY25_TCP together with CHARLY25 to support TCP as protocol between the Red Pitaya device and the frontend software
 #define CHARLY25_TCP
@@ -162,7 +160,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20190414"
+#define SDR_APP_VERSION "20190511"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -980,33 +978,33 @@ uint16_t c25pp_switch_tx_lpf(void)
 	uint16_t c25pp_tx_lpf_i2c_new_data = c25_i2c_data & 0x004f;
 
 	// Switch LPF depending on TX frequency
-	if ((C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ) || c25_sw_lpf_bypass == true)  // 6m LPF
+	if (c25_tx_freq > C25_10M_HIGH_FREQ || c25_sw_lpf_bypass == true)  // 6m LPF
 	{
-		c25pp_tx_lpf_i2c_new_data |= 1 << 8;
+		c25pp_tx_lpf_i2c_new_data |= 1 << 8;  // 6m LPF
 	}
-	else if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || (C25_12M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_12M_LOW_FREQ))  // 10/12m LPF
+	else if (c25_tx_freq > C25_15M_HIGH_FREQ)
 	{
-		c25pp_tx_lpf_i2c_new_data |= 1 << 9;
+		c25pp_tx_lpf_i2c_new_data |= 1 << 9;  // 10/12m LPF
 	}
-	else if ((C25_15M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_15M_LOW_FREQ) || (C25_17M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_17M_LOW_FREQ))  // 15/17m LPF
+	else if (c25_tx_freq > C25_20M_HIGH_FREQ)
 	{
-		c25pp_tx_lpf_i2c_new_data |= 1 << 10;
+		c25pp_tx_lpf_i2c_new_data |= 1 << 10;  // 15/17m LPF
 	}
-	else if ((C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ) || (C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ))  // 20/30m LPF
+	else if (c25_tx_freq > C25_40M_HIGH_FREQ)
 	{
-		c25pp_tx_lpf_i2c_new_data |= 1 << 11;
+		c25pp_tx_lpf_i2c_new_data |= 1 << 11;  // 20/30m LPF
 	}
-	else if ((C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ) || (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ))  // 40/60m LPF
+	else if (c25_tx_freq > C25_80M_HIGH_FREQ)
 	{
-		c25pp_tx_lpf_i2c_new_data |= 1 << 12;
+		c25pp_tx_lpf_i2c_new_data |= 1 << 12;  // 40/60m LPF
 	}
-	else if (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ)  // 80m LPF
+	else if (c25_tx_freq > C25_160M_HIGH_FREQ)
 	{
-		c25pp_tx_lpf_i2c_new_data |= 1 << 13;
+		c25pp_tx_lpf_i2c_new_data |= 1 << 13;  // 80m LPF
 	}
-	else if (C25_160M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_160M_LOW_FREQ)  // 160m LPF
+	else
 	{
-		c25pp_tx_lpf_i2c_new_data |= 1 << 14;
+		c25pp_tx_lpf_i2c_new_data |= 1 << 14;  // 160m LPF
 	}
 
 	// Turn PTT and PA only on if a LPF is active
@@ -1045,33 +1043,33 @@ uint16_t c25ab_switch_tx_lpf(void)
 	uint16_t c25ab_tx_lpf_i2c_new_data = c25_i2c_data & 0x004f;
 
 	// Switch LPF depending on TX frequency
-	if ((C25_6M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_6M_LOW_FREQ) || c25_sw_lpf_bypass == true)  // 6m LPF
+	if (c25_tx_freq > C25_10M_HIGH_FREQ || c25_sw_lpf_bypass == true)  // 6m LPF
 	{
-		c25ab_tx_lpf_i2c_new_data |= 1 << 8;
+		c25ab_tx_lpf_i2c_new_data |= 1 << 8;  // 6m LPF
 	}
-	else if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || (C25_12M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_12M_LOW_FREQ))  // 10/12m LPF
+	else if (c25_tx_freq > C25_15M_HIGH_FREQ)
 	{
-		c25ab_tx_lpf_i2c_new_data |= 1 << 9;
+		c25ab_tx_lpf_i2c_new_data |= 1 << 9;  // 10/12m LPF
 	}
-	else if ((C25_15M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_15M_LOW_FREQ) || (C25_17M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_17M_LOW_FREQ))  // 15/17m LPF
+	else if (c25_tx_freq > C25_20M_HIGH_FREQ)
 	{
-		c25ab_tx_lpf_i2c_new_data |= 1 << 10;
+		c25ab_tx_lpf_i2c_new_data |= 1 << 10;  // 15/17m LPF
 	}
-	else if (C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ)  // 20 LPF
+	else if (c25_tx_freq > C25_30M_HIGH_FREQ)
 	{
-		c25ab_tx_lpf_i2c_new_data |= 1 << 11;
+		c25ab_tx_lpf_i2c_new_data |= 1 << 11;  // 20 LPF
 	}
-	else if ((C25_30M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_30M_LOW_FREQ) || (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ))  // 30/40m LPF
+	else if (c25_tx_freq > C25_60M_HIGH_FREQ)
 	{
-		c25ab_tx_lpf_i2c_new_data |= 1 << 12;
+		c25ab_tx_lpf_i2c_new_data |= 1 << 12;  // 30/40m LPF
 	}
-	else if ((C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ) || (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ))  // 60/80m LPF
+	else if (c25_tx_freq > C25_160M_HIGH_FREQ)
 	{
-		c25ab_tx_lpf_i2c_new_data |= 1 << 13;
+		c25ab_tx_lpf_i2c_new_data |= 1 << 13;  // 60/80m LPF
 	}
-	else if (C25_160M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_160M_LOW_FREQ)  // 160m LPF
+	else
 	{
-		c25ab_tx_lpf_i2c_new_data |= 1 << 14;
+		c25ab_tx_lpf_i2c_new_data |= 1 << 14;  // 160m LPF
 	}
 
 	// Turn PTT and PA only on if a LPF is active
@@ -1110,29 +1108,21 @@ uint16_t c25lc_switch_tx_lpf(void)
 	uint16_t c25lc_tx_lpf_i2c_new_data = c25_i2c_data & 0x00ff;
 
 	// Switch LPF depending on TX frequency
-	if ((C25_10M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_10M_LOW_FREQ) || c25_sw_lpf_bypass == true)  // 10m LPF
+	if (c25_tx_freq > C25_20M_HIGH_FREQ || c25_sw_lpf_bypass == true)  // 10m LPF
 	{
-		c25lc_tx_lpf_i2c_new_data |= 1 << 8;
+		c25lc_tx_lpf_i2c_new_data |= 1 << 8;  // 10m LPF
 	}
-	else if (C25_20M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_20M_LOW_FREQ)  // 20m LPF
+	else if (c25_tx_freq > C25_40M_HIGH_FREQ)
 	{
-		c25lc_tx_lpf_i2c_new_data |= 1 << 9;
+		c25lc_tx_lpf_i2c_new_data |= 1 << 9;  // 20m LPF
 	}
-	else if (C25_40M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_40M_LOW_FREQ)  // 40m LPF
+	else if (c25_tx_freq > C25_80M_HIGH_FREQ)
 	{
-		c25lc_tx_lpf_i2c_new_data |= 1 << 10;
+		c25lc_tx_lpf_i2c_new_data |= 1 << 10;  // 40m LPF
 	}
-
-#ifdef CHARLY25LC_60M_BAND
-	else if (C25_60M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_60M_LOW_FREQ)  // 40m LPF on 60m band
+	else
 	{
-		c25lc_tx_lpf_i2c_new_data |= 1 << 10;
-	}
-#endif
-
-	else if (C25_80M_HIGH_FREQ > c25_tx_freq && c25_tx_freq >= C25_80M_LOW_FREQ)  // 80m LPF
-	{
-		c25lc_tx_lpf_i2c_new_data |= 1 << 11;
+		c25lc_tx_lpf_i2c_new_data |= 1 << 11;  // 80m LPF
 	}
 
 	// Turn PTT and PA only on if a LPF is active
