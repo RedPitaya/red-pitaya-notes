@@ -2,13 +2,16 @@
 cell xilinx.com:ip:clk_wiz pll_0 {
   PRIMITIVE PLL
   PRIM_IN_FREQ.VALUE_SRC USER
-  PRIM_IN_FREQ 125.0
+  PRIM_IN_FREQ 122.88
   PRIM_SOURCE Differential_clock_capable_pin
   CLKOUT1_USED true
-  CLKOUT1_REQUESTED_OUT_FREQ 125.0
+  CLKOUT1_REQUESTED_OUT_FREQ 122.88
   CLKOUT2_USED true
-  CLKOUT2_REQUESTED_OUT_FREQ 250.0
-  CLKOUT2_REQUESTED_PHASE -90.0
+  CLKOUT2_REQUESTED_OUT_FREQ 245.76
+  CLKOUT2_REQUESTED_PHASE -112.5
+  CLKOUT3_USED true
+  CLKOUT3_REQUESTED_OUT_FREQ 245.76
+  CLKOUT3_REQUESTED_PHASE -67.5
   USE_RESET false
 } {
   clk_in1_p adc_clk_p_i
@@ -41,8 +44,8 @@ cell xilinx.com:ip:proc_sys_reset rst_0 {} {
 
 # Create xadc_wiz
 cell xilinx.com:ip:xadc_wiz xadc_0 {
-  DCLK_FREQUENCY 125
-  ADC_CONVERSION_RATE 200
+  DCLK_FREQUENCY 122.88
+  ADC_CONVERSION_RATE 204.8
   XADC_STARUP_SELECTION independent_adc
   CHANNEL_ENABLE_VAUXP0_VAUXN0 true
   CHANNEL_ENABLE_VAUXP1_VAUXN1 true
@@ -60,7 +63,9 @@ cell xilinx.com:ip:xadc_wiz xadc_0 {
 # ADC
 
 # Create axis_red_pitaya_adc
-cell pavel-demin:user:axis_red_pitaya_adc adc_0 {} {
+cell pavel-demin:user:axis_red_pitaya_adc adc_0 {
+  ADC_DATA_WIDTH 16
+} {
   aclk pll_0/clk_out1
   adc_dat_a adc_dat_a_i
   adc_dat_b adc_dat_b_i
@@ -70,9 +75,12 @@ cell pavel-demin:user:axis_red_pitaya_adc adc_0 {} {
 # DAC
 
 # Create axis_red_pitaya_dac
-cell pavel-demin:user:axis_red_pitaya_dac:1.0 dac_0 {} {
+cell pavel-demin:user:axis_red_pitaya_dac dac_0 {
+  DAC_DATA_WIDTH 14
+} {
   aclk pll_0/clk_out1
   ddr_clk pll_0/clk_out2
+  wrt_clk pll_0/clk_out3
   locked pll_0/locked
   dac_clk dac_clk_o
   dac_rst dac_rst_o
@@ -210,7 +218,7 @@ cell pavel-demin:user:port_slicer cfg_slice_0 {
 }
 
 module rx_0 {
-  source projects/sdr_transceiver_hpsdr/rx.tcl
+  source projects/sdr_transceiver_hpsdr_z20/rx.tcl
 } {
   slice_0/din rst_slice_0/dout
   slice_1/din rst_slice_1/dout
@@ -261,7 +269,7 @@ cell pavel-demin:user:port_slicer cfg_slice_1 {
 }
 
 module tx_0 {
-  source projects/sdr_transceiver_hpsdr/tx.tcl
+  source projects/sdr_transceiver_hpsdr_z20/tx.tcl
 } {
   fifo_generator_0/srst rst_slice_2/dout
   keyer_0/key_flag key_slice_0/dout
@@ -291,7 +299,7 @@ cell pavel-demin:user:port_slicer cfg_slice_2 {
 }
 
 module codec {
-  source projects/sdr_transceiver_hpsdr/codec.tcl
+  source projects/sdr_transceiver_hpsdr_z20/codec.tcl
 } {
   fifo_generator_0/srst rst_slice_3/dout
   keyer_0/key_flag key_slice_1/dout
