@@ -52,7 +52,9 @@
 11.02.2019 DG8MG: Added support to bypass the shortwave lowpass filters.
 13.04.2019 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/stemlab-sdr-notes/commit/8d85bc4c0b6836fe7d3303845044e8f8d7f47fd2
 14.04.2019 DG8MG: Merged the TCP protocol handling changes and the TX attenuator emulator from Christoph / DL1YCF.
-11.05.2019 DG8MG: Changed the behaviour of the low pass filter switching functions
+11.05.2019 DG8MG: Changed the behaviour of the low pass filter switching functions.
+29.06.2019 DG8MG: Extended the CW keyer by a trigger comming from the PC via the HPSDR protocol.
+06.08.2019 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/stemlab-sdr-notes/commit/c8d18d25c0b28e5d2a62a333741952631a662f46
 */
 
 // DG8MG
@@ -160,7 +162,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20190511"
+#define SDR_APP_VERSION "20190806"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -229,6 +231,7 @@ const uint32_t C25_160M_HIGH_FREQ = 2005000;
 
 uint16_t c25_adc_conversion_register[4] = {0};
 void *c25_adc_handler(void *arg);
+uint8_t cwx_data = 0;
 
 #ifdef CHARLY25_TCP
 static int sock_TCP_Server = -1;
@@ -1797,7 +1800,18 @@ int main(int argc, char *argv[])
 	{
 		ramp[i] = ramp[i - 1] + a[0] - a[1] * cos(2.0 * M_PI * i / size) + a[2] * cos(4.0 * M_PI * i / size) - a[3] * cos(6.0 * M_PI * i / size);
 	}
-	scale = 6.1e6 / ramp[size];
+
+#ifdef CHARLY25	
+	if (c25_fpga_model > 1)
+	{
+		scale = 4.1e6 / ramp[size];
+	}
+	else
+#endif
+	{
+		scale = 6.1e6 / ramp[size];
+	}
+	
 	for (i = 0; i <= size; ++i)
 	{
 		tx_ramp[i] = (int32_t)floor(ramp[i] * scale + 0.5);
@@ -2104,6 +2118,11 @@ int main(int argc, char *argv[])
 
 				last_seqnum = seqnum;
 #endif
+
+#ifdef CHARLY25
+				cwx_data = buffer[i][16 + 504 + 504 + 5];		
+				usleep(1000);
+#endif	
 
 				if (!tx_mux_data)
 				{
@@ -2987,9 +3006,20 @@ void *handler_ep6(void *arg)
 
 #ifdef CHARLY25
 	// C2 – Mercury (receiver) software serial number (0 to 255) - set to 33 by default
-	if (c25_rx1_bpf_present) header[5] = 146;
-	if (c25_rx2_bpf_present) header[5] = 147;
-
+	header[5] = 0;
+	header[36] = 0;
+	if (c25_rx1_bpf_present)
+	{
+		header[5] |= 0b00000001;
+		header[36] |= 0b00000010;
+	}
+	
+	if (c25_rx2_bpf_present)
+	{
+		header[5] |= 0b00000010;
+		header[36] |= 0b00000100;
+	}
+	
 	// C3 - Penelope (transmitter) software serial number (0 to 255) – set to 17 by default
 	header[6] = C25_TRX_ID;
 
@@ -3270,13 +3300,29 @@ inline int cw_input()
 
 #ifdef DEBUG_CW
 	static int cw_debug_memory;
+	static int cwx_debug_memory;
 #endif
 
 	int input;
+	
 	if (!cw_int_data) return 0;
-	input = (*gpio_in >> 1) & 3;
+	
+	if (!cwx_data)
+	{
+		input = (*gpio_in >> 1) & 3;
+	}
+	else
+	{	
+		input = 1;
+	}
 
 #ifdef DEBUG_CW
+	if (cwx_data != cwx_debug_memory)
+	{
+		cwx_debug_memory = cwx_data;
+		fprintf(stderr, "DEBUG_CW: cwx_data: %u\n", cwx_data);		
+	}
+	
 	if (input != cw_debug_memory)
 	{
 		cw_debug_memory = input;
