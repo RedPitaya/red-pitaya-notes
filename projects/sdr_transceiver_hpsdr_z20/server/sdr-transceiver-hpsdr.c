@@ -483,7 +483,7 @@ uint16_t misc_data_0 = 0;
 uint16_t misc_data_1 = 0;
 uint16_t misc_data_2 = 0;
 
-inline int lower_bound(int *array, int size, int value)
+static inline int lower_bound(int *array, int size, int value)
 {
   int i = 0, j = size, k;
   while(i < j)
@@ -1891,7 +1891,8 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	strncpy(hwaddr.ifr_name, "eth0", IFNAMSIZ);
+	memset(&hwaddr, 0, sizeof(hwaddr));
+	strncpy(hwaddr.ifr_name, "eth0", IFNAMSIZ - 1);
 	ioctl(sock_ep2, SIOCGIFHWADDR, &hwaddr);
 	for (i = 0; i < 6; ++i) reply[i + 3] = hwaddr.ifr_addr.sa_data[i];
 
@@ -3295,7 +3296,7 @@ void *handler_ep6(void *arg)
 	return NULL;
 }
 
-inline int cw_input()
+static inline int cw_input()
 {
 
 #ifdef DEBUG_CW
@@ -3334,7 +3335,7 @@ inline int cw_input()
 	return input;
 }
 
-inline void cw_on()
+static inline void cw_on()
 {
 	int delay = 1200 / cw_speed;
 	if (cw_delay < delay) delay = cw_delay;
@@ -3389,7 +3390,7 @@ inline void cw_on()
 #endif
 }
 
-inline void cw_off()
+static inline void cw_off()
 {
 	int delay = 1200 / cw_speed;
 	if (cw_delay < delay) delay = cw_delay;
@@ -3411,7 +3412,7 @@ inline void cw_off()
 #endif
 }
 
-inline void cw_ptt_off()
+static inline void cw_ptt_off()
 {
 	if (--cw_ptt_delay > 0) return;
 
@@ -3452,7 +3453,7 @@ inline void cw_ptt_off()
 #endif
 }
 
-inline void cw_signal_delay(int code)
+static inline void cw_signal_delay(int code)
 {
 	int delay = code ? 1200 / cw_speed : 3600 * cw_weight / (50 * cw_speed);
 	delay -= cw_delay;
@@ -3466,7 +3467,7 @@ inline void cw_signal_delay(int code)
 	}
 }
 
-inline void cw_space_delay(int code)
+static inline void cw_space_delay(int code)
 {
 	int delay = code ? 1200 / cw_speed - cw_delay : 2400 / cw_speed;
 	if (delay < 0) delay = 0;

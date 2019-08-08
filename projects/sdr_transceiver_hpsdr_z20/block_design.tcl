@@ -20,7 +20,7 @@ cell xilinx.com:ip:clk_wiz pll_0 {
 
 # Create processing_system7
 cell xilinx.com:ip:processing_system7 ps_0 {
-  PCW_IMPORT_BOARD_PRESET cfg/red_pitaya.xml
+  PCW_IMPORT_BOARD_PRESET cfg/stemlab_sdr.xml
 } {
   M_AXI_GP0_ACLK pll_0/clk_out1
 }
@@ -62,8 +62,8 @@ cell xilinx.com:ip:xadc_wiz xadc_0 {
 
 # ADC
 
-# Create axis_red_pitaya_adc
-cell pavel-demin:user:axis_red_pitaya_adc adc_0 {
+# Create axis_stemlab_sdr_adc
+cell pavel-demin:user:axis_stemlab_sdr_adc adc_0 {
   ADC_DATA_WIDTH 16
 } {
   aclk pll_0/clk_out1
@@ -74,8 +74,8 @@ cell pavel-demin:user:axis_red_pitaya_adc adc_0 {
 
 # DAC
 
-# Create axis_red_pitaya_dac
-cell pavel-demin:user:axis_red_pitaya_dac dac_0 {
+# Create axis_stemlab_sdr_dac
+cell pavel-demin:user:axis_stemlab_sdr_dac dac_0 {
   DAC_DATA_WIDTH 14
 } {
   aclk pll_0/clk_out1
