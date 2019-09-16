@@ -55,6 +55,7 @@
 11.05.2019 DG8MG: Changed the behaviour of the low pass filter switching functions.
 29.06.2019 DG8MG: Extended the CW keyer by a trigger comming from the PC via the HPSDR protocol.
 06.08.2019 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/stemlab-sdr-notes/commit/c8d18d25c0b28e5d2a62a333741952631a662f46
+08.08.2019 DG8MG: Modified code to make it compatible with Pavel Demin's commit: https://github.com/pavel-demin/stemlab-sdr-notes/commit/dc92d7567cdb2f9aa6d3322c26bb0fdd40338f06
 */
 
 // DG8MG
@@ -109,11 +110,14 @@
 // Define DEBUG_ADC_REF for measuring head reflected power debug messages
 // #define DEBUG_ADC_REF
 
-// Define DEBUG_ADC_TOTAL_CUR for measuring head forward power debug messages
+// Define DEBUG_ADC_TOTAL_CUR for measuring head total current debug messages
 // #define DEBUG_ADC_TOTAL_CUR
 
-// Define DEBUG_ADC_PA_CUR for measuring head reflected power debug messages
+// Define DEBUG_ADC_PA_CUR for measuring head PA current debug messages
 // #define DEBUG_ADC_PA_CUR
+
+// Define DEBUG_DRIVE for drive level debug messages
+// #define DEBUG_DRIVE
 // DG8MG
 
 // DL1YCF
@@ -162,7 +166,7 @@
 #endif
 
 #ifdef CHARLY25
-#define SDR_APP_VERSION "20190806"
+#define SDR_APP_VERSION "20190910"
 
 #define C25_I2C_DEVICE "/dev/i2c-0"
 #define C25_HAMLAB_I2C_DEVICE "/dev/i2c-1"
@@ -1389,13 +1393,29 @@ uint16_t c25_switch_ext_board(uint16_t frame_1_2)
 	+ ------------------------- Bit 7 - unused
 	*/
 
-	if (frame_1_2 != c25_ext_board_i2c_data)
+	uint8_t frame_1 = frame_1_2 & 0b0000000011111111;
+	uint8_t frame_2 = frame_1_2 >> 8;
+	uint8_t step_attenuator = 0;
+	uint16_t c25_new_ext_board_i2c_data = 0;
+	
+	step_attenuator |= (frame_2 & 0b00000001) << 4;
+	step_attenuator |= (frame_2 & 0b00000010) << 2;
+	step_attenuator |= (frame_2 & 0b00000100);
+	step_attenuator |= (frame_2 & 0b00001000) >> 2;
+	step_attenuator |= (frame_2 & 0b00010000) >> 4;
+
+	frame_2 &= 0b11100000;
+	frame_2 |= step_attenuator;
+	c25_new_ext_board_i2c_data = (frame_2 << 8) | frame_1;
+	
+	if (c25_new_ext_board_i2c_data != c25_ext_board_i2c_data)
 	{
-		c25_ext_board_i2c_data = frame_1_2;
+		c25_ext_board_i2c_data = c25_new_ext_board_i2c_data;
 		ioctl(i2c_fd, I2C_SLAVE, C25_EXT_BOARD_ADDR);
 		i2c_write_addr_data16(i2c_fd, 0x02, c25_ext_board_i2c_data);
 
 #ifdef DEBUG_EXT
+		fprintf(stderr, "DEBUG_EXT: frame_1_2: 0x%04x\n", frame_1_2);
 		fprintf(stderr, "DEBUG_EXT: c25_ext_board_i2c_data: 0x%04x\n", c25_ext_board_i2c_data);
 #endif
 	}
@@ -2776,6 +2796,11 @@ uint8_t ptt, boost;
 		}
 #else
 		data = frame[1];
+		
+#ifdef DEBUG_DRIVE
+		fprintf(stderr, "DEBUG_DRIVE: frame[1]: %u\n", frame[1]);
+#endif
+
 		if (c25_fpga_model > 1)
 		{
 			*tx_level = (int16_t)floor(data * 85.920 + 0.5);
