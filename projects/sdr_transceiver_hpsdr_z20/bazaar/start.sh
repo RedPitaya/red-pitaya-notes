@@ -4,7 +4,7 @@ rw
 if [ -e "/dev/i2c-1" ]
 then
   touch /opt/redpitaya/www/apps/hamlab.device
-  rohamrf -s
+  hamrf -s
   gpiorelay -s
 else
   touch /opt/redpitaya/www/apps/stemlab.device
