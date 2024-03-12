@@ -25,14 +25,14 @@ const char *rp_app_desc()
 int rp_app_init()
 {
   fprintf(stderr, "Starting SDR transceiver server.\n");
-  system("/opt/redpitaya/www/apps/sdr_transceiver/start.sh");
+  system("/opt/redpitaya/www/apps/sdr_transceiver_z20_122_88/start.sh");
   return 0;
 }
 
 int rp_app_exit(void)
 {
   fprintf(stderr, "Stopping SDR transceiver server.\n");
-  system("/opt/redpitaya/www/apps/sdr_transceiver/stop.sh");
+  system("/opt/redpitaya/www/apps/sdr_transceiver_z20_122_88/stop.sh");
   return 0;
 }
 
