@@ -30,8 +30,8 @@ int main(int argc, char *argv[])
   volatile void *cfg, *sts;
   volatile uint32_t *fifo;
   volatile uint8_t *rst, *led;
-  volatile uint32_t *cntr;
-  double freq;
+  volatile uint16_t *cntr;
+  double freq, dbfs[2];
   long time;
   uint32_t buffer, scale;
   uint16_t level[2];
@@ -51,6 +51,7 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
+  errno = 0;
   time = strtol(argv[2], &end, 10);
   if(errno != 0 || end == argv[2] || time < 1 || time > 30)
   {
@@ -64,13 +65,13 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40040000);
-  cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40041000);
-  fifo = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40043000);
+  cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x80000000);
+  sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x81000000);
+  fifo = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x83000000);
 
   rst = (uint8_t *)(cfg + 1);
   led = (uint8_t *)(cfg + 2);
-  cntr = (uint32_t *)(sts + 4);
+  cntr = (uint16_t *)(sts + 2);
 
   *(uint32_t *)(cfg + 4) = (uint32_t)floor(freq * 1.0e6 * time + 0.5) - 1;
 
@@ -98,6 +99,11 @@ int main(int argc, char *argv[])
     bits[1] = 15 >> (uint8_t)floor(-5.0 * log10(1.0 * level[1] / scale));
 
     *led = bits[1] << 4 | bits[0];
+
+    dbfs[0] = 20.0 * log10(1.0 * level[0] / scale);
+    dbfs[1] = 20.0 * log10(1.0 * level[1] / scale);
+
+    printf("IN1: %5.1f dBFS, IN2: %5.1f dBFS\n", dbfs[0], dbfs[1]);
   }
 
   *led = 0;

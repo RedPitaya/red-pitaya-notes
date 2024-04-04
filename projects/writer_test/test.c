@@ -25,7 +25,7 @@ int main()
   }
 
   cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40000000);
-  sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40001000);
+  sts = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x41000000);
 
   close(fd);
 
@@ -93,7 +93,7 @@ int main()
     printf("%08x\n", value);
   }
 
-  while(*pos != 32)
+  while(*pos != 2)
   {
     printf("pos: %08x\n", *pos);
     usleep(100000);

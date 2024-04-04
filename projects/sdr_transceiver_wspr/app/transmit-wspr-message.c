@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -19,13 +20,13 @@ int main(int argc, char *argv[])
   volatile uint16_t *coef[2];
   volatile uint32_t *fifo;
   unsigned char symbols[162];
-  char *message, *hashtab;
+  char *message, *hashtab, *loctab;
   config_t config;
   double freq, corr, dphi, level;
   int chan;
 
-  hashtab = malloc(sizeof(char) * 32768 * 13);
-  memset(hashtab, 0, sizeof(char) * 32768 * 13);
+  hashtab = calloc(32768 * 13, sizeof(char));
+  loctab = calloc(32768 * 5, sizeof(char));
 
   if(argc != 2)
   {
@@ -107,11 +108,11 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40001000);
-  fifo = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x4000A000);
+  cfg = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x40000000);
+  fifo = mmap(NULL, sysconf(_SC_PAGESIZE), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0x42000000);
 
-  coef[0] = ((uint16_t *)(cfg + 40));
-  coef[1] = ((uint16_t *)(cfg + 42));
+  coef[0] = (uint16_t *)(cfg + 40);
+  coef[1] = (uint16_t *)(cfg + 42);
 
   level = level > -90.0 ? floor(32766 * pow(10.0, level / 20.0) + 0.5) : 0.0;
 
@@ -131,7 +132,7 @@ int main(int argc, char *argv[])
   *rst &= ~1;
   *rst |= 1;
 
-  get_wspr_channel_symbols(message, hashtab, symbols);
+  get_wspr_channel_symbols(message, hashtab, loctab, symbols);
 
   for(i = 0; i < 162; ++i)
   {
