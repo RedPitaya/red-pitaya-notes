@@ -21,7 +21,7 @@ RM = rm -rf
 
 INITRAMFS_TAG = 3.18
 LINUX_TAG = 6.1
-DTREE_TAG = xilinx_v2023.1
+DTREE_TAG = xilinx-v2020.2
 
 INITRAMFS_DIR = tmp/initramfs-$(INITRAMFS_TAG)
 LINUX_DIR = tmp/linux-$(LINUX_TAG)
@@ -41,7 +41,7 @@ RTL8188_URL = https://github.com/pavel-demin/rtl8188eu/archive/main.tar.gz
 
 .PRECIOUS: tmp/cores/% tmp/%.xpr tmp/%.xsa tmp/%.bit tmp/%.fsbl/executable.elf tmp/%.tree/system-top.dts
 
-all: tmp/$(NAME).bit boot.bin boot-rootfs.bin
+all: tmp/$(NAME).bit boot.bin boot-rootfs.bin devicetree.dtb
 
 cores: $(addprefix tmp/, $(CORES))
 
@@ -100,6 +100,10 @@ boot.bin: tmp/$(NAME).fsbl/executable.elf tmp/ssbl.elf initrd.dtb zImage.bin ini
 	echo "img:{[bootloader] tmp/$(NAME).fsbl/executable.elf tmp/ssbl.elf [load=0x2000000] initrd.dtb [load=0x2008000] zImage.bin [load=0x3000000] initrd.bin}" > tmp/boot.bif
 	bootgen -image tmp/boot.bif -w -o $@
 
+devicetree.dtb: uImage tmp/$(NAME).tree/system-top.dts
+	$(LINUX_DIR)/scripts/dtc/dtc -I dts -O dtb -o devicetree.dtb \
+	  -i tmp/$(NAME).tree tmp/$(NAME).tree/system-top.dts
+
 boot-rootfs.bin: tmp/$(NAME).fsbl/executable.elf tmp/ssbl.elf rootfs.dtb zImage.bin
 	echo "img:{[bootloader] tmp/$(NAME).fsbl/executable.elf tmp/ssbl.elf [load=0x2000000] rootfs.dtb [load=0x2008000] zImage.bin}" > tmp/boot-rootfs.bif
 	bootgen -image tmp/boot-rootfs.bif -w -o $@
@@ -139,7 +143,7 @@ tmp/%.tree/system-top.dts: tmp/%.xsa $(DTREE_DIR)
 	sed -i 's|#include|/include/|' $@
 
 clean:
-	$(RM) zImage.bin initrd.bin boot.bin boot-rootfs.bin initrd.dtb rootfs.dtb tmp
+	$(RM) zImage.bin initrd.bin boot.bin boot-rootfs.bin initrd.dtb rootfs.dtb devicetree.dtb tmp
 	$(RM) .Xil usage_statistics_webtalk.html usage_statistics_webtalk.xml
 	$(RM) vivado*.jou vivado*.log
 	$(RM) webtalk*.jou webtalk*.log
