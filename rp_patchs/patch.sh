@@ -16,6 +16,9 @@
 
 cd ..
 
+# Update links and info
+git apply rp_patchs/vna.patch
+
 # Copy bazaar projects
 cp -rv ./projects/sdr_receiver_hpsdr ./projects/sdr_receiver_hpsdr_z20
 cp -rv ./projects/sdr_receiver_hpsdr/bazaar ./projects/sdr_receiver_hpsdr_122_88
