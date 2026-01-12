@@ -38,17 +38,17 @@ cp -rv ./rp_patchs/rp/* ./projects
 
 
 # Patch makefile
-cp Makefile Makefile.bak
-sed -i "s/xilinx_v2023.1/xilinx-v2020.2/g" Makefile
-cat ./rp_patchs/Makefile >> ./Makefile
+#cp Makefile Makefile.bak
+#sed -i "s/xilinx_v2025.2/xilinx-v2025.1/g" Makefile
+#cat ./rp_patchs/Makefile >> ./Makefile
 
 # Patch devicetree
-cp scripts/devicetree.tcl scripts/devicetree.tcl.bak
-sed -i "s/{2023.1}/{2020.2}/g" scripts/devicetree.tcl
-
+#cp scripts/devicetree.tcl scripts/devicetree.tcl.bak
 # Enable overlay in DT
-awk 'NR==21{print "hsi set_property CONFIG.dt_overlay true [hsi get_os]"}1' scripts/devicetree.tcl > scripts/devicetree.tcl.tmp
-cat scripts/devicetree.tcl.tmp > scripts/devicetree.tcl
+#awk 'NR==21{print "hsi set_property CONFIG.dt_overlay true [hsi get_os]"}1' scripts/devicetree.tcl > scripts/devicetree.tcl.tmp
+#cat scripts/devicetree.tcl.tmp > scripts/devicetree.tcl
+
+echo 'createdts -hw tmp/$project_name.xsa -platform-name redpitaya_platform -local-repo $repo_path -overlay -out $tree_path/overlay' >> scripts/devicetree.tcl
 
 # Patch sdr_receiver_hpsdr, sdr_receiver_hpsdr_z20, sdr_receiver_hpsdr_122_88
 sed -i "s/'sdr_receiver_hpsdr'/'sdr_receiver_hpsdr'/g" projects/sdr_receiver_hpsdr/bazaar/index.html
