@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 import struct
 import warnings
@@ -11,25 +12,25 @@ import numpy as np
 import matplotlib
 
 from matplotlib.figure import Figure
-from matplotlib.ticker import Formatter, FuncFormatter
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-if "PyQt5" in sys.modules:
-    from PyQt5.uic import loadUiType
-    from PyQt5.QtCore import QRegExp, QTimer, QSettings, QDir, Qt
-    from PyQt5.QtGui import QRegExpValidator
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QDialog, QFileDialog, QPushButton, QLabel, QSpinBox
-    from PyQt5.QtNetwork import QAbstractSocket, QTcpSocket
+if "PyQt6" in sys.modules:
+    from PyQt6.uic import loadUiType
+    from PyQt6.QtCore import QRegularExpression, QTimer, QSettings, Qt
+    from PyQt6.QtGui import QRegularExpressionValidator
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QDialog, QFileDialog, QPushButton, QLabel, QSpinBox
+    from PyQt6.QtNetwork import QAbstractSocket, QTcpSocket
 else:
-    from PySide2.QtUiTools import loadUiType
-    from PySide2.QtCore import QRegExp, QTimer, QSettings, QDir, Qt
-    from PySide2.QtGui import QRegExpValidator
-    from PySide2.QtWidgets import QApplication, QMainWindow, QMessageBox, QDialog, QFileDialog, QPushButton, QLabel, QSpinBox
-    from PySide2.QtNetwork import QAbstractSocket, QTcpSocket
+    from PySide6.QtUiTools import loadUiType
+    from PySide6.QtCore import QRegularExpression, QTimer, QSettings, Qt
+    from PySide6.QtGui import QRegularExpressionValidator
+    from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QDialog, QFileDialog, QPushButton, QLabel, QSpinBox
+    from PySide6.QtNetwork import QAbstractSocket, QTcpSocket
 
-Ui_VNA, QMainWindow = loadUiType("vna.ui")
+path = os.path.dirname(__file__)
+Ui_VNA, QMainWindow = loadUiType(os.path.join(path, "vna.ui"))
 
 
 def unicode_minus(s):
@@ -100,7 +101,7 @@ class FigureTab:
             self.cursorValues[i] = QSpinBox()
             self.cursorValues[i].setMinimumSize(90, 0)
             self.cursorValues[i].setSingleStep(10)
-            self.cursorValues[i].setAlignment(Qt.AlignRight | Qt.AlignTrailing | Qt.AlignVCenter)
+            self.cursorValues[i].setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTrailing | Qt.AlignmentFlag.AlignVCenter)
             self.toolbar.addWidget(self.cursorLabels[i])
             self.toolbar.addWidget(self.cursorValues[i])
             self.cursorValues[i].valueChanged.connect(partial(self.set_cursor, i))
@@ -145,10 +146,10 @@ class FigureTab:
         freq = value
         gamma = self.vna.gamma(freq)
         if self.mode == "smith":
-            marker.set_xdata(gamma.real)
-            marker.set_ydata(gamma.imag)
+            marker.set_xdata([gamma.real])
+            marker.set_ydata([gamma.imag])
         else:
-            marker.set_xdata(freq)
+            marker.set_xdata([freq])
         row[0].set_text("%d" % freq)
         if self.mode == "gain_short":
             gain = self.vna.gain_short(freq)
@@ -469,8 +470,8 @@ class VNA(QMainWindow, Ui_VNA):
         super(VNA, self).__init__()
         self.setupUi(self)
         # address validator
-        rx = QRegExp("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|rp-[0-9A-Fa-f]{6}\.local$")
-        self.addrValue.setValidator(QRegExpValidator(rx, self.addrValue))
+        rx = QRegularExpression(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|rp-[0-9A-Fa-f]{6}\.local$")
+        self.addrValue.setValidator(QRegularExpressionValidator(rx, self.addrValue))
         # state variables
         self.idle = True
         self.reading = False
@@ -497,19 +498,19 @@ class VNA(QMainWindow, Ui_VNA):
         # configure widgets
         self.rateValue.addItems(["5000", "1000", "500", "100", "50", "10", "5", "1"])
         self.rateValue.lineEdit().setReadOnly(True)
-        self.rateValue.lineEdit().setAlignment(Qt.AlignRight)
+        self.rateValue.lineEdit().setAlignment(Qt.AlignmentFlag.AlignRight)
         for i in range(self.rateValue.count()):
-            self.rateValue.setItemData(i, Qt.AlignRight, Qt.TextAlignmentRole)
+            self.rateValue.setItemData(i, Qt.AlignmentFlag.AlignRight, Qt.ItemDataRole.TextAlignmentRole)
         self.set_enabled(False)
         self.stopSweep.setEnabled(False)
         # read settings
-        settings = QSettings("vna.ini", QSettings.IniFormat)
+        settings = QSettings("vna.ini", QSettings.Format.IniFormat)
         self.read_cfg_settings(settings)
         # create TCP socket
         self.socket = QTcpSocket(self)
         self.socket.connected.connect(self.connected)
         self.socket.readyRead.connect(self.read_data)
-        self.socket.error.connect(self.display_error)
+        self.socket.errorOccurred.connect(self.display_error)
         # connect signals from widgets
         self.connectButton.clicked.connect(self.start)
         self.writeButton.clicked.connect(self.write_cfg)
@@ -750,23 +751,23 @@ class VNA(QMainWindow, Ui_VNA):
         dialog = QFileDialog(self, "Write configuration settings", ".", "*.ini")
         dialog.setDefaultSuffix("ini")
         dialog.selectFile("vna.ini")
-        dialog.setAcceptMode(QFileDialog.AcceptSave)
-        dialog.setOptions(QFileDialog.DontConfirmOverwrite)
-        if dialog.exec() == QDialog.Accepted:
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dialog.setOptions(QFileDialog.Option.DontConfirmOverwrite)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             name = dialog.selectedFiles()
-            settings = QSettings(name[0], QSettings.IniFormat)
+            settings = QSettings(name[0], QSettings.Format.IniFormat)
             self.write_cfg_settings(settings)
 
     def read_cfg(self):
         dialog = QFileDialog(self, "Read configuration settings", ".", "*.ini")
         dialog.setDefaultSuffix("ini")
         dialog.selectFile("vna.ini")
-        dialog.setAcceptMode(QFileDialog.AcceptOpen)
-        if dialog.exec() == QDialog.Accepted:
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             name = dialog.selectedFiles()
-            settings = QSettings(name[0], QSettings.IniFormat)
+            settings = QSettings(name[0], QSettings.Format.IniFormat)
             self.read_cfg_settings(settings)
-            window.update_tab()
+            self.update_tab()
 
     def write_cfg_settings(self, settings):
         settings.setValue("addr", self.addrValue.text())
@@ -860,9 +861,9 @@ class VNA(QMainWindow, Ui_VNA):
     def write_csv(self):
         dialog = QFileDialog(self, "Write csv file", ".", "*.csv")
         dialog.setDefaultSuffix("csv")
-        dialog.setAcceptMode(QFileDialog.AcceptSave)
-        dialog.setOptions(QFileDialog.DontConfirmOverwrite)
-        if dialog.exec() == QDialog.Accepted:
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dialog.setOptions(QFileDialog.Option.DontConfirmOverwrite)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             name = dialog.selectedFiles()
             fh = open(name[0], "w")
             f = self.dut.freq
@@ -878,9 +879,9 @@ class VNA(QMainWindow, Ui_VNA):
     def write_s1p(self):
         dialog = QFileDialog(self, "Write s1p file", ".", "*.s1p")
         dialog.setDefaultSuffix("s1p")
-        dialog.setAcceptMode(QFileDialog.AcceptSave)
-        dialog.setOptions(QFileDialog.DontConfirmOverwrite)
-        if dialog.exec() == QDialog.Accepted:
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dialog.setOptions(QFileDialog.Option.DontConfirmOverwrite)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             name = dialog.selectedFiles()
             fh = open(name[0], "w")
             freq = self.dut.freq
@@ -893,19 +894,16 @@ class VNA(QMainWindow, Ui_VNA):
     def write_s2p(self, gain):
         dialog = QFileDialog(self, "Write s2p file", ".", "*.s2p")
         dialog.setDefaultSuffix("s2p")
-        dialog.setAcceptMode(QFileDialog.AcceptSave)
-        dialog.setOptions(QFileDialog.DontConfirmOverwrite)
-        if dialog.exec() == QDialog.Accepted:
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dialog.setOptions(QFileDialog.Option.DontConfirmOverwrite)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             name = dialog.selectedFiles()
             fh = open(name[0], "w")
             freq = self.dut.freq
             gamma = self.gamma(freq)
             fh.write("# GHz S MA R 50\n")
             for i in range(freq.size):
-                fh.write(
-                    "0.0%.8d   %8.6f %7.2f   %8.6f %7.2f   0.000000    0.00   0.000000    0.00\n"
-                    % (freq[i] * 1000, np.absolute(gamma[i]), np.angle(gamma[i], deg=True), np.absolute(gain[i]), np.angle(gain[i], deg=True))
-                )
+                fh.write("0.0%.8d   %8.6f %7.2f   %8.6f %7.2f   0.000000    0.00   0.000000    0.00\n" % (freq[i] * 1000, np.absolute(gamma[i]), np.angle(gamma[i], deg=True), np.absolute(gain[i]), np.angle(gain[i], deg=True)))
             fh.close()
 
     def write_s2p_short(self):
@@ -915,11 +913,16 @@ class VNA(QMainWindow, Ui_VNA):
         self.write_s2p(self.gain_open(self.dut.freq))
 
 
-warnings.filterwarnings("ignore")
-app = QApplication(sys.argv)
-dpi = app.primaryScreen().logicalDotsPerInch()
-matplotlib.rcParams["figure.dpi"] = dpi
-window = VNA()
-window.update_tab()
-window.show()
-sys.exit(app.exec_())
+def main():
+    warnings.filterwarnings("ignore")
+    app = QApplication(sys.argv)
+    dpi = app.primaryScreen().logicalDotsPerInch()
+    matplotlib.rcParams["figure.dpi"] = dpi
+    window = VNA()
+    window.update_tab()
+    window.show()
+    app.exec()
+
+
+if __name__ == "__main__":
+    main()

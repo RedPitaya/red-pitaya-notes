@@ -20,29 +20,42 @@ cell pavel-demin:user:axis_fifo fifo_0 {
   WRITE_DEPTH 16384
 } {
   aclk /pll_0/clk_out1
-  aresetn slice_0/dout
+  aresetn slice_1/dout
 }
 
-# Create axis_gate_controller
-cell pavel-demin:user:axis_gate_controller gate_0 {} {
-  S_AXIS fifo_0/M_AXIS
+# Create axis_fifo
+cell pavel-demin:user:axis_fifo fifo_1 {
+  S_AXIS_TDATA_WIDTH 32
+  M_AXIS_TDATA_WIDTH 64
+  WRITE_DEPTH 8192
+} {
   aclk /pll_0/clk_out1
   aresetn slice_1/dout
 }
 
+# Create axis_gate_controller
+cell pavel-demin:user:axis_gate_controller gate_0 {} {
+  S_AXIS_TX_EVTS fifo_0/M_AXIS
+  S_AXIS_RX_EVTS fifo_1/M_AXIS
+  aclk /pll_0/clk_out1
+  aresetn slice_0/dout
+}
+
 # Create xlconcat
 cell xilinx.com:ip:xlconcat concat_0 {
-  NUM_PORTS 2
+  NUM_PORTS 3
   IN0_WIDTH 32
   IN1_WIDTH 32
+  IN2_WIDTH 1
 } {
   In0 slice_2/dout
-  In1 gate_0/poff
+  In1 gate_0/tx_phase
+  In2 gate_0/sync
 }
 
 # Create axis_constant
 cell pavel-demin:user:axis_constant phase_0 {
-  AXIS_TDATA_WIDTH 64
+  AXIS_TDATA_WIDTH 65
 } {
   cfg_data concat_0/dout
   aclk /pll_0/clk_out1
@@ -55,16 +68,15 @@ cell xilinx.com:ip:dds_compiler dds_0 {
   FREQUENCY_RESOLUTION 0.2
   PHASE_INCREMENT Streaming
   PHASE_OFFSET Streaming
-  HAS_ARESETN true
   HAS_PHASE_OUT false
   PHASE_WIDTH 30
   OUTPUT_WIDTH 24
   DSP48_USE Minimal
   OUTPUT_SELECTION Sine
+  RESYNC true
 } {
   S_AXIS_PHASE phase_0/M_AXIS
   aclk /pll_0/clk_out1
-  aresetn slice_1/dout
 }
 
 # Create c_shift_ram
@@ -94,8 +106,16 @@ cell xilinx.com:ip:c_shift_ram delay_1 {
   WIDTH 1
   DEPTH 14
 } {
-  D gate_0/dout
+  D gate_0/gate
   CLK /pll_0/clk_out1
+}
+
+# Create util_vector_logic
+cell xilinx.com:ip:util_vector_logic not_0 {
+  C_SIZE 1
+  C_OPERATION not
+} {
+  Op1 delay_1/Q
 }
 
 # Create axis_zeroer

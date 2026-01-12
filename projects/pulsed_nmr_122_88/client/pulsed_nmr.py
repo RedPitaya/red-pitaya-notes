@@ -9,21 +9,21 @@ import matplotlib
 
 from matplotlib.figure import Figure
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-if "PyQt5" in sys.modules:
-    from PyQt5.uic import loadUiType
-    from PyQt5.QtCore import QRegExp, QTimer
-    from PyQt5.QtGui import QRegExpValidator
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget
-    from PyQt5.QtNetwork import QAbstractSocket, QTcpSocket
+if "PyQt6" in sys.modules:
+    from PyQt6.uic import loadUiType
+    from PyQt6.QtCore import QRegularExpression, QTimer
+    from PyQt6.QtGui import QRegularExpressionValidator
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox
+    from PyQt6.QtNetwork import QAbstractSocket, QTcpSocket
 else:
-    from PySide2.QtUiTools import loadUiType
-    from PySide2.QtCore import QRegExp, QTimer
-    from PySide2.QtGui import QRegExpValidator
-    from PySide2.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget
-    from PySide2.QtNetwork import QAbstractSocket, QTcpSocket
+    from PySide6.QtUiTools import loadUiType
+    from PySide6.QtCore import QRegularExpression, QTimer
+    from PySide6.QtGui import QRegularExpressionValidator
+    from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+    from PySide6.QtNetwork import QAbstractSocket, QTcpSocket
 
 Ui_PulsedNMR, QMainWindow = loadUiType("pulsed_nmr.ui")
 
@@ -36,8 +36,8 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
         self.setupUi(self)
         self.rateValue.addItems(["20", "40", "80", "160", "320", "640", "1280"])
         # IP address validator
-        rx = QRegExp("^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|rp-[0-9A-Fa-f]{6}\.local$")
-        self.addrValue.setValidator(QRegExpValidator(rx, self.addrValue))
+        rx = QRegularExpression(r"^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])|rp-[0-9A-Fa-f]{6}\.local$")
+        self.addrValue.setValidator(QRegularExpressionValidator(rx, self.addrValue))
         # state variable
         self.idle = True
         # number of samples to show on the plot
@@ -45,7 +45,7 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
         # buffer and offset for the incoming samples
         self.buffer = bytearray(16 * self.size)
         self.offset = 0
-        self.data = np.frombuffer(self.buffer, np.int32)
+        self.data = np.frombuffer(self.buffer, np.complex64)
         # create figure
         figure = Figure()
         figure.set_facecolor("none")
@@ -65,14 +65,14 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
         self.socket = QTcpSocket(self)
         self.socket.connected.connect(self.connected)
         self.socket.readyRead.connect(self.read_data)
-        self.socket.error.connect(self.display_error)
+        self.socket.errorOccurred.connect(self.display_error)
         # connect signals from buttons and boxes
         self.startButton.clicked.connect(self.start)
         self.freqValue.valueChanged.connect(self.set_freq)
         self.deltaValue.valueChanged.connect(self.set_delta)
         self.rateValue.currentIndexChanged.connect(self.set_rate)
         # set rate
-        self.rateValue.setCurrentIndex(3)
+        self.rateValue.setCurrentIndex(6)
         # create timer for the repetitions
         self.startTimer = QTimer(self)
         self.startTimer.timeout.connect(self.timeout)
@@ -117,7 +117,7 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
             self.buffer[self.offset : 16 * self.size] = self.socket.read(16 * self.size - self.offset)
             self.offset = 0
             # plot the signal envelope
-            self.curve.set_ydata(np.abs(self.data.astype(np.float32).view(np.complex64)[0::2] / (1 << 30)))
+            self.curve.set_ydata(np.abs(self.data[0::2]))
             self.canvas.draw()
 
     def display_error(self, socketError):
@@ -128,11 +128,14 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
             QMessageBox.information(self, "PulsedNMR", "Error: %s." % self.socket.errorString())
         self.stop()
 
+    def send_command(self, code, data):
+        self.socket.write(struct.pack("<Q", int(code) << 60 | int(data)))
+
     def set_freq(self, value):
         if self.idle:
             return
-        self.socket.write(struct.pack("<Q", 0 << 60 | int(1.0e6 * value)))
-        self.socket.write(struct.pack("<Q", 1 << 60 | int(1.0e6 * value)))
+        freq = int(1.0e6 * value + 0.5)
+        self.send_command(0, freq << 30 | freq)
 
     def set_rate(self, index):
         # time axis
@@ -153,7 +156,7 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
         self.canvas.draw()
         if self.idle:
             return
-        self.socket.write(struct.pack("<Q", 2 << 60 | int(122.88e6 / rate / 2)))
+        self.send_command(1, 122.88e6 / rate / 2)
 
     def set_delta(self, value):
         if self.idle:
@@ -161,23 +164,17 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
         self.timer.stop()
         self.timer.start(value)
 
-    def clear_pulses(self):
+    def clear_events(self):
         if self.idle:
             return
-        self.socket.write(struct.pack("<Q", 7 << 60))
+        self.send_command(6, 0)
 
-    def add_delay(self, gate, width):
-        if self.idle:
-            return
-        self.socket.write(struct.pack("<Q", 8 << 60 | int(width - 1)))
-        self.socket.write(struct.pack("<Q", 9 << 60 | int(gate << 48)))
-
-    def add_pulse(self, level, phase, width):
-        if self.idle:
-            return
-        phase = int(np.floor(phase / 360.0 * (1 << 30) + 0.5))
-        self.socket.write(struct.pack("<Q", 8 << 60 | int(width - 1)))
-        self.socket.write(struct.pack("<Q", 9 << 60 | int(1 << 48 | level << 32 | phase)))
+    def add_event(self, delay, sync=0, gate=0, level=0, tx_phase=0, rx_phase=0):
+        lvl = int(level / 100.0 * 32766 + 0.5)
+        txp = int(tx_phase / 360.0 * 0x3FFFFFFF + 0.5)
+        rxp = int(rx_phase / 360.0 * 0x3FFFFFFF + 0.5)
+        self.send_command(7, lvl << 44 | gate << 41 | sync << 40 | int(delay - 1))
+        self.send_command(8, rxp << 30 | txp)
 
     def start_sequence(self):
         if self.idle:
@@ -186,11 +183,13 @@ class PulsedNMR(QMainWindow, Ui_PulsedNMR):
         bwidth = np.floor(122.88 * self.bwidthValue.value() + 0.5)
         delay = np.floor(122.88 * self.delayValue.value() + 0.5)
         size = self.size
-        self.clear_pulses()
-        self.add_pulse(32766, 0, awidth)
-        self.add_delay(0, delay)
-        self.add_pulse(32766, 0, bwidth)
-        self.socket.write(struct.pack("<Q", 10 << 60 | int(size)))
+        self.clear_events()
+        self.add_event(delay=1, sync=1)
+        self.add_event(delay=awidth, gate=1, level=100)
+        self.add_event(delay=delay)
+        self.add_event(delay=bwidth, gate=1, level=100)
+        self.send_command(9, 1 << 40 | int(size - 1))
+        self.send_command(10, size)
 
 
 app = QApplication(sys.argv)
@@ -198,4 +197,4 @@ dpi = app.primaryScreen().logicalDotsPerInch()
 matplotlib.rcParams["figure.dpi"] = dpi
 window = PulsedNMR()
 window.show()
-sys.exit(app.exec_())
+sys.exit(app.exec())

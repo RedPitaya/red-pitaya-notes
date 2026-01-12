@@ -11,6 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 
 #define TCP_PORT 1002
@@ -30,7 +31,7 @@ int main(int argc, char *argv[])
   pthread_t thread;
   volatile uint8_t *rst;
   struct sockaddr_in addr;
-  int yes = 1;
+  uint32_t timeout = 3000, one = 1, cnt = 5;
   uint64_t command, data;
   uint8_t code, chan;
 
@@ -59,7 +60,14 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  setsockopt(sock_server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes , sizeof(yes));
+  setsockopt(sock_server, SOL_SOCKET, SO_REUSEADDR, &one , sizeof(one));
+
+  setsockopt(sock_server, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+  setsockopt(sock_server, SOL_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
+  setsockopt(sock_server, SOL_TCP, TCP_KEEPIDLE, &one, sizeof(one));
+  setsockopt(sock_server, SOL_TCP, TCP_KEEPINTVL, &one, sizeof(one));
+
+  setsockopt(sock_server, SOL_TCP, TCP_USER_TIMEOUT, &timeout, sizeof(timeout));
 
   /* setup listening address */
   memset(&addr, 0, sizeof(addr));
@@ -153,11 +161,11 @@ int main(int argc, char *argv[])
         /* set pha delay */
         if(chan == 0)
         {
-          *(uint16_t *)(cfg + 50) = data;
+          *(uint16_t *)(cfg + 48) = data;
         }
         else if(chan == 1)
         {
-          *(uint16_t *)(cfg + 66) = data;
+          *(uint16_t *)(cfg + 64) = data;
         }
       }
       else if(code == 5)
@@ -165,11 +173,11 @@ int main(int argc, char *argv[])
         /* set pha min threshold */
         if(chan == 0)
         {
-          *(uint16_t *)(cfg + 52) = data;
+          *(uint16_t *)(cfg + 50) = data;
         }
         else if(chan == 1)
         {
-          *(uint16_t *)(cfg + 68) = data;
+          *(uint16_t *)(cfg + 66) = data;
         }
       }
       else if(code == 6)
@@ -177,11 +185,11 @@ int main(int argc, char *argv[])
         /* set pha max threshold */
         if(chan == 0)
         {
-          *(uint16_t *)(cfg + 54) = data;
+          *(uint16_t *)(cfg + 52) = data;
         }
         else if(chan == 1)
         {
-          *(uint16_t *)(cfg + 70) = data;
+          *(uint16_t *)(cfg + 68) = data;
         }
       }
       else if(code == 7)

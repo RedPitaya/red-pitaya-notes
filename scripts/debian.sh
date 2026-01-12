@@ -3,13 +3,13 @@ device=$1
 boot_dir=`mktemp -d /tmp/BOOT.XXXXXXXXXX`
 root_dir=`mktemp -d /tmp/ROOT.XXXXXXXXXX`
 
-linux_dir=tmp/linux-6.1
-linux_ver=6.1.76-xilinx
+linux_dir=tmp/linux-6.12
+linux_ver=6.12.52-xilinx
 
 # Choose mirror automatically, depending the geographic and network location
 mirror=http://deb.debian.org/debian
 
-distro=bookworm
+distro=trixie
 arch=armhf
 
 passwd=changeme
@@ -59,6 +59,8 @@ depmod -a -b $root_dir $linux_ver
 cp /etc/resolv.conf $root_dir/etc/
 cp /usr/bin/qemu-arm-static $root_dir/usr/bin/
 
+rm $root_dir/etc/apt/sources.list
+
 cp -r debian/etc/apt $root_dir/etc/
 cp -r debian/etc/systemd $root_dir/etc/
 
@@ -84,7 +86,7 @@ dpkg-reconfigure tzdata
 
 apt-get -y install openssh-server ca-certificates chrony fake-hwclock \
   usbutils psmisc lsof parted curl vim wpasupplicant hostapd dnsmasq \
-  firmware-misc-nonfree firmware-realtek firmware-atheros firmware-brcm80211 \
+  firmware-atheros firmware-brcm80211 firmware-mediatek firmware-realtek \
   iw iptables dhcpcd-base ntfs-3g libubootenv-tool
 
 systemctl enable dhcpcd
@@ -95,8 +97,6 @@ systemctl disable nftables
 systemctl disable wpa_supplicant
 
 sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' etc/ssh/sshd_config
-
-sed -i '/^#net.ipv4.ip_forward=1$/s/^#//' etc/sysctl.conf
 
 echo root:$passwd | chpasswd
 

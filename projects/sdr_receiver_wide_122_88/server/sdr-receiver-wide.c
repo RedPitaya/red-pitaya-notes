@@ -38,6 +38,7 @@ int main ()
   struct sockaddr_in addr;
   uint32_t command, size;
   int32_t value;
+  double integral;
   int yes = 1;
 
   memset(&param, 0, sizeof(param));
@@ -91,6 +92,7 @@ int main ()
   }
 
   setsockopt(sock_server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes, sizeof(yes));
+  setsockopt(sock_server, SOL_SOCKET, SO_ZEROCOPY, (void *)&yes, sizeof(yes));
 
   /* setup listening address */
   memset(&addr, 0, sizeof(addr));
@@ -113,10 +115,10 @@ int main ()
     usleep(100);
     *rx_rst &= ~2;
     /* set default sample rate */
-    *rx_rate = 6;
+    *rx_rate = 5;
     /* set default phase increments */
-    rx_freq[0] = (uint32_t)floor(10000000 / 122.88e6 * (1<<30) + 0.5);
-    rx_freq[1] = (uint32_t)floor(10000000 / 122.88e6 * (1<<30) + 0.5);
+    rx_freq[0] = (uint32_t)floor(10000000 / 122.88e6 * 0xffffffff + 0.5);
+    rx_freq[1] = (uint32_t)floor(10000000 / 122.88e6 * 0xffffffff + 0.5);
 
     if((sock_client = accept(sock_server, NULL, NULL)) < 0)
     {
@@ -145,18 +147,16 @@ int main ()
         {
           case 0:
             /* set sample rate */
-            if(value < 6 || value > 64) continue;
+            if(value < 4 || value > 64) continue;
             *rx_rate = value;
             break;
           case 1:
             /* set first phase increment */
-            if(value < 0 || value > 61440000) continue;
-            rx_freq[0] = (uint32_t)floor(value / 122.88e6 * (1<<30) + 0.5);
+            rx_freq[0] = (uint32_t)floor(modf(value / 122.88e6, &integral) * 0xffffffff + 0.5);
             break;
           case 2:
             /* set second phase increment */
-            if(value < 0 || value > 61440000) continue;
-            rx_freq[1] = (uint32_t)floor(value / 122.88e6 * (1<<30) + 0.5);
+            rx_freq[1] = (uint32_t)floor(modf(value / 122.88e6, &integral) * 0xffffffff + 0.5);
             break;
         }
       }
@@ -169,7 +169,7 @@ int main ()
       {
         offset = limit > 0 ? 0 : 4096*1024;
         limit = limit > 0 ? 0 : 32*1024;
-        if(send(sock_client, ram + offset, 4096*1024, MSG_NOSIGNAL) < 0) break;
+        if(send(sock_client, ram + offset, 4096*1024, MSG_NOSIGNAL | MSG_ZEROCOPY) < 0) break;
       }
       else
       {

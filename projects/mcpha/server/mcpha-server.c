@@ -11,6 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 
 #define TCP_PORT 1001
@@ -53,7 +54,7 @@ int main(int argc, char *argv[])
   volatile int16_t *iir_limits;
   volatile uint32_t *hst[2];
   struct sockaddr_in addr;
-  int yes = 1;
+  uint32_t timeout = 3000, one = 1, cnt = 5;
   uint32_t start, pre, tot, size;
   uint64_t command, data;
   uint8_t code, chan;
@@ -139,7 +140,15 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  setsockopt(sock_server, SOL_SOCKET, SO_REUSEADDR, (void *)&yes , sizeof(yes));
+  setsockopt(sock_server, SOL_SOCKET, SO_REUSEADDR, &one , sizeof(one));
+
+  setsockopt(sock_server, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+
+  setsockopt(sock_server, SOL_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
+  setsockopt(sock_server, SOL_TCP, TCP_KEEPIDLE, &one, sizeof(one));
+  setsockopt(sock_server, SOL_TCP, TCP_KEEPINTVL, &one, sizeof(one));
+
+  setsockopt(sock_server, SOL_TCP, TCP_USER_TIMEOUT, &timeout, sizeof(timeout));
 
   /* setup listening address */
   memset(&addr, 0, sizeof(addr));

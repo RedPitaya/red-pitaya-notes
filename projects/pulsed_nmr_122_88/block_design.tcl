@@ -42,29 +42,6 @@ cell xilinx.com:ip:proc_sys_reset rst_0 {} {
   slowest_sync_clk pll_0/clk_out1
 }
 
-# GPIO
-
-# Delete input/output port
-delete_bd_objs [get_bd_ports exp_p_tri_io]
-
-# Create output port
-create_bd_port -dir O -from 7 -to 0 exp_p_tri_io
-
-# Delete input/output port
-delete_bd_objs [get_bd_ports exp_n_tri_io]
-
-# Create output port
-create_bd_port -dir O -from 7 -to 0 exp_n_tri_io
-
-# Create xlconcat
-cell xilinx.com:ip:xlconcat concat_0 {
-  NUM_PORTS 2
-  IN0_WIDTH 1
-  IN1_WIDTH 7
-} {
-  dout exp_n_tri_io
-}
-
 # ADC
 
 # Create axis_red_pitaya_adc
@@ -99,14 +76,14 @@ cell pavel-demin:user:axis_red_pitaya_dac dac_0 {
 # Create axi_hub
 cell pavel-demin:user:axi_hub hub_0 {
   CFG_DATA_WIDTH 128
-  STS_DATA_WIDTH 32
+  STS_DATA_WIDTH 64
 } {
   S_AXI ps_0/M_AXI_GP0
   aclk pll_0/clk_out1
   aresetn rst_0/peripheral_aresetn
 }
 
-# RX
+# TX
 
 # Create port_slicer
 cell pavel-demin:user:port_slicer rst_slice_0 {
@@ -117,7 +94,24 @@ cell pavel-demin:user:port_slicer rst_slice_0 {
 
 # Create port_slicer
 cell pavel-demin:user:port_slicer cfg_slice_0 {
-  DIN_WIDTH 128 DIN_FROM 95 DIN_TO 32
+  DIN_WIDTH 128 DIN_FROM 63 DIN_TO 32
+} {
+  din hub_0/cfg_data
+}
+
+module tx_0 {
+  source projects/pulsed_nmr_122_88/tx.tcl
+} {
+  slice_0/din rst_slice_0/dout
+  slice_1/din rst_slice_0/dout
+  slice_2/din cfg_slice_0/dout
+}
+
+# RX
+
+# Create port_slicer
+cell pavel-demin:user:port_slicer cfg_slice_1 {
+  DIN_WIDTH 128 DIN_FROM 127 DIN_TO 64
 } {
   din hub_0/cfg_data
 }
@@ -126,36 +120,13 @@ module rx_0 {
   source projects/pulsed_nmr_122_88/rx.tcl
 } {
   slice_0/din rst_slice_0/dout
-  slice_1/din rst_slice_0/dout
-  slice_2/din cfg_slice_0/dout
-  slice_3/din cfg_slice_0/dout
-  slice_4/din cfg_slice_0/dout
-}
-
-# TX
-
-# Create port_slicer
-cell pavel-demin:user:port_slicer rst_slice_1 {
-  DIN_WIDTH 128 DIN_FROM 15 DIN_TO 8
-} {
-  din hub_0/cfg_data
-  dout exp_p_tri_io
-}
-
-# Create port_slicer
-cell pavel-demin:user:port_slicer cfg_slice_1 {
-  DIN_WIDTH 128 DIN_FROM 127 DIN_TO 96
-} {
-  din hub_0/cfg_data
-}
-
-module tx_0 {
-  source projects/pulsed_nmr_122_88/tx.tcl
-} {
-  slice_0/din rst_slice_1/dout
-  slice_1/din rst_slice_0/dout
+  slice_1/din cfg_slice_1/dout
   slice_2/din cfg_slice_1/dout
-  delay_1/Q concat_0/In0
+  slice_3/din cfg_slice_1/dout
+  concat_0/In1 tx_0/gate_0/rx_phase
+  concat_0/In2 tx_0/gate_0/sync
+  conv_1/M_AXIS tx_0/gate_0/S_AXIS
+  fifo_0/S_AXIS tx_0/gate_0/M_AXIS
 }
 
 # Create axis_combiner
@@ -171,18 +142,74 @@ cell  xilinx.com:ip:axis_combiner comb_0 {
   aresetn rst_0/peripheral_aresetn
 }
 
-# STS
+# GPIO
+
+# Delete input/output port
+delete_bd_objs [get_bd_ports exp_p_tri_io]
+
+# Create output port
+create_bd_port -dir O -from 7 -to 0 exp_p_tri_io
+
+# Delete input/output port
+delete_bd_objs [get_bd_ports exp_n_tri_io]
+
+# Create output port
+create_bd_port -dir O -from 7 -to 0 exp_n_tri_io
+
+# Create xlconcat
+cell xilinx.com:ip:xlconcat concat_0 {
+  NUM_PORTS 3
+  IN0_WIDTH 1
+  IN1_WIDTH 1
+  IN2_WIDTH 6
+} {
+  In0 tx_0/delay_1/Q
+  In1 tx_0/not_0/Res
+  dout exp_n_tri_io
+}
+
+# Create port_slicer
+cell pavel-demin:user:port_slicer exp_slice_0 {
+  DIN_WIDTH 128 DIN_FROM 1 DIN_TO 1
+} {
+  din hub_0/cfg_data
+}
+
+# Create port_slicer
+cell pavel-demin:user:port_slicer exp_slice_1 {
+  DIN_WIDTH 128 DIN_FROM 14 DIN_TO 8
+} {
+  din hub_0/cfg_data
+}
 
 # Create xlconcat
 cell xilinx.com:ip:xlconcat concat_1 {
   NUM_PORTS 2
+  IN0_WIDTH 1
+  IN1_WIDTH 7
+} {
+  In0 exp_slice_0/dout
+  In1 exp_slice_1/dout
+  dout exp_p_tri_io
+}
+
+# STS
+
+# Create xlconcat
+cell xilinx.com:ip:xlconcat concat_2 {
+  NUM_PORTS 4
   IN0_WIDTH 16
   IN1_WIDTH 16
+  IN2_WIDTH 16
+  IN3_WIDTH 1
 } {
-  In0 rx_0/fifo_0/read_count
-  In1 tx_0/fifo_0/write_count
+  In0 tx_0/fifo_0/write_count
+  In1 tx_0/fifo_1/write_count
+  In2 rx_0/fifo_0/read_count
+  In3 tx_0/gate_0/enbl
   dout hub_0/sts_data
 }
 
-wire rx_0/fifo_0/M_AXIS hub_0/S00_AXIS
 wire tx_0/fifo_0/S_AXIS hub_0/M00_AXIS
+wire tx_0/fifo_1/S_AXIS hub_0/M01_AXIS
+wire rx_0/fifo_0/M_AXIS hub_0/S02_AXIS
