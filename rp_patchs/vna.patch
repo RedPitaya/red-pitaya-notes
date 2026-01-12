@@ -13,7 +13,7 @@ diff --git a/projects/vna/bazaar/index.html b/projects/vna/bazaar/index.html
 -<li>Run the <code>vna.exe</code> program.</li>
 -<li>Type in the IP address of the Red Pitaya board and press Connect button.</li>
 +<li>Open the VNA application on the Red Pitaya board</li>
-+<li>Download and unpack the control program <a href="https://downloads.redpitaya.com/downloads/Clients/vna/vna-windows-tool.zip">control program</a>.</li>
++<li>Download and unpack the control program <a href="https://downloads.redpitaya.com/downloads/Clients/vna/vna-windows-tool-2026.1.zip">control program</a>.</li>
 +<li>Run the <b>vna.exe</b> program.</li>
 +<li>Type in the IP address of the Red Pitaya board and press <b>Connect</b> button.</li>
  <li>Perform calibration and measurements.</li>
@@ -22,14 +22,14 @@ diff --git a/projects/vna/bazaar/index.html b/projects/vna/bazaar/index.html
  <ul>
 +<li>Open the VNA application on the Red Pitaya board</li>
  <li>Install Python 3 and all the required libraries:</li>
- <div class="highlight"><pre><code class="language-bash" data-lang="bash">sudo apt-get install python3-dev python3-pip python3-numpy python3-pyqt5 libfreetype6-dev
+ <div class="highlight"><pre><code class="language-bash" data-lang="bash">sudo apt-get install python3-dev python3-pip python3-numpy python3-pyqt6 libfreetype6-dev
  sudo pip3 install matplotlib mpldatacursor</code></pre></div>
 -<li>Clone the source code repository:</li>
 -<div class="highlight"><pre><code class="language-bash" data-lang="bash">git clone https://github.com/pavel-demin/red-pitaya-notes</code></pre></div>
-+<li>Download and unpack the control program <a href="https://downloads.redpitaya.com/downloads/Clients/vna/vna-linux-tool.zip">control program</a>.</li>
++<li>Download and unpack the control program <a href="https://downloads.redpitaya.com/downloads/Clients/vna/vna-linux-tool-2026.1.zip">control program</a>.</li>
  <li>Run the control program:</li>
 -<div class="highlight"><pre><code class="language-bash" data-lang="bash">cd red-pitaya-notes/projects/vna/client
-+<div class="highlight"><pre><code class="language-bash" data-lang="bash">cd vna-linux-tool
++<div class="highlight"><pre><code class="language-bash" data-lang="bash">cd vna-linux-tool-2026.1
  python3 vna.py</code></pre></div>
 -<li>Type in the IP address of the Red Pitaya board and press Connect button.</li>
 +<li>Type in the IP address of the Red Pitaya board and press <b>Connect</b> button.</li>
