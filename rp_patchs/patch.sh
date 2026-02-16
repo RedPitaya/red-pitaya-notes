@@ -80,6 +80,7 @@ sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr/g" projects/sdr_transceive
 sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_122_88/g" projects/sdr_transceiver_hpsdr_122_88/bazaar/src/main.c
 sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_z20/g" projects/sdr_transceiver_hpsdr_z20/bazaar/src/main.c
 
+sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_z20/g" projects/sdr_transceiver_hpsdr_z20/bazaar/start.sh
 
 # Patch vna, vna_z20, vna_122_88
 sed -i "s/'vna'/'vna'/g" projects/vna/bazaar/index.html

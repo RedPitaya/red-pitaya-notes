@@ -1,0 +1,6 @@
+{
+    "name": "SDR transceiver compatible with HPSDR (THETIS)",
+    "version": "1.0-20260216",
+    "revision": "b73ed5c0",
+    "description": "SDR transceiver emulating a HPSDR (THETIS) transceiver with a network interface, two receivers and one transmitter. (by Pavel Demin)"
+}
