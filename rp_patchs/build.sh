@@ -76,7 +76,7 @@ cd ..
 
 JOBS=`nproc 2> /dev/null || echo 1`
 
-source /media/500gb/Xilinx/2025.1/Vitis/settings64.sh
+source /srv/Xilinx/2025.1/Vitis/settings64.sh
 
 CUR_DIR=$(pwd)
 
@@ -176,6 +176,7 @@ PRJ_SERVER=sdr-transceiver-hpsdr
 PRJ_SERVER_DEST=sdr-transceiver-hpsdr
 PRJ_SERVER_DEST_THETIS=sdr-transceiver-hpsdr-thetis
 DEST=$CUR_DIR/build/sdr_transceiver_hpsdr
+DEST_THETIS=$CUR_DIR/build/sdr_transceiver_hpsdr_thetis
 
 make NAME=$PRJ clean
 make NAME=$PRJ bit
@@ -189,11 +190,13 @@ make NAME=$PRJ bit
 convertFPGA_2025 $DEST $PRJ
 #
 
-makeBazar $DEST $PRJ
 makeServer $DEST $PRJ $PRJ_SERVER  $PRJ_SERVER_DEST
 makeServer $DEST $PRJ $PRJ_SERVER  $PRJ_SERVER_DEST_THETIS -DTHETIS
 
 $REPO_DIR/rp_patchs/patch_thetis_transceiver_hpsdr.sh $BUILD_DIR $PRJ $PRJ_THETIS $PRJ_SERVER_DEST_THETIS $REPO_DIR
+
+makeBazar $DEST $PRJ
+makeBazar $DEST_THETIS $PRJ_THETIS
 
 fi
 
@@ -204,6 +207,7 @@ PRJ_SERVER=sdr-transceiver-hpsdr
 PRJ_SERVER_DEST=sdr-transceiver-hpsdr
 PRJ_SERVER_DEST_THETIS=sdr-transceiver-hpsdr-thetis
 DEST=$CUR_DIR/build/sdr_transceiver_hpsdr_z20
+DEST_THETIS=$CUR_DIR/build/sdr_transceiver_hpsdr_thetis_z20
 
 make NAME=$PRJ clean
 make NAME=$PRJ bit PART=xc7z020clg400-1
@@ -217,11 +221,13 @@ make NAME=$PRJ bit PART=xc7z020clg400-1
 convertFPGA_2025 $DEST $PRJ
 #
 
-makeBazar $DEST $PRJ
 makeServer $DEST $PRJ $PRJ_SERVER  $PRJ_SERVER_DEST
 makeServer $DEST $PRJ $PRJ_SERVER  $PRJ_SERVER_DEST_THETIS -DTHETIS
 
 $REPO_DIR/rp_patchs/patch_thetis_transceiver_hpsdr.sh $BUILD_DIR $PRJ $PRJ_THETIS $PRJ_SERVER_DEST_THETIS $REPO_DIR
+
+makeBazar $DEST $PRJ
+makeBazar $DEST_THETIS $PRJ_THETIS
 
 fi
 
@@ -234,6 +240,7 @@ PRJ_SERVER_DEST=sdr-transceiver-hpsdr
 PRJ_SERVER_DEST_THETIS=sdr-transceiver-hpsdr-thetis
 PRJ_SERVER_DEST_REC=sdr-receiver
 DEST=$CUR_DIR/build/sdr_transceiver_hpsdr_122_88
+DEST_THETIS=$CUR_DIR/build/sdr_transceiver_hpsdr_thetis_122_88
 
 make NAME=$PRJ clean
 make NAME=$PRJ bit PART=xc7z020clg400-1
@@ -247,12 +254,15 @@ make NAME=$PRJ bit PART=xc7z020clg400-1
 convertFPGA_2025 $DEST $PRJ
 #
 
-makeBazar $DEST $PRJ
 makeServer $DEST $PRJ $PRJ_SERVER  $PRJ_SERVER_DEST
 makeServer $DEST $PRJ $PRJ_SERVER  $PRJ_SERVER_DEST_THETIS -DTHETIS
 makeServer $DEST $PRJ $PRJ_SERVER_REC  $PRJ_SERVER_DEST_REC
 
 $REPO_DIR/rp_patchs/patch_thetis_transceiver_hpsdr.sh $BUILD_DIR $PRJ $PRJ_THETIS $PRJ_SERVER_DEST_THETIS $REPO_DIR
+
+makeBazar $DEST $PRJ
+makeBazar $DEST_THETIS $PRJ_THETIS
+
 fi
 
 echo "VNA  Projects"

@@ -32,7 +32,13 @@ cp -rv ./projects/vna/bazaar ./projects/vna_122_88
 cp -rv ./projects/sdr_transceiver ./projects/sdr_transceiver_z20
 cp -rv ./projects/sdr_transceiver/bazaar ./projects/sdr_transceiver_122_88
 
+mkdir -p ./projects/sdr_transceiver_hpsdr_thetis
+mkdir -p ./projects/sdr_transceiver_hpsdr_thetis_z20
+mkdir -p ./projects/sdr_transceiver_hpsdr_thetis_122_88
 
+cp -rv ./projects/sdr_transceiver_hpsdr/bazaar ./projects/sdr_transceiver_hpsdr_thetis
+cp -rv ./projects/sdr_transceiver_hpsdr/bazaar ./projects/sdr_transceiver_hpsdr_thetis_z20
+cp -rv ./projects/sdr_transceiver_hpsdr/bazaar ./projects/sdr_transceiver_hpsdr_thetis_122_88
 
 cp -rv ./rp_patchs/rp/* ./projects
 
@@ -79,6 +85,10 @@ sed -i "s/'sdr_transceiver_hpsdr'/'sdr_transceiver_hpsdr_z20'/g" projects/sdr_tr
 sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr/g" projects/sdr_transceiver_hpsdr/bazaar/src/main.c
 sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_122_88/g" projects/sdr_transceiver_hpsdr_122_88/bazaar/src/main.c
 sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_z20/g" projects/sdr_transceiver_hpsdr_z20/bazaar/src/main.c
+
+sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_thetis/g" projects/sdr_transceiver_hpsdr_thetis/bazaar/src/main.c
+sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_thetis_z20/g" projects/sdr_transceiver_hpsdr_thetis_z20/bazaar/src/main.c
+sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_thetis_122_88/g" projects/sdr_transceiver_hpsdr_thetis_122_88/bazaar/src/main.c
 
 sed -i "s/sdr_transceiver_hpsdr/sdr_transceiver_hpsdr_z20/g" projects/sdr_transceiver_hpsdr_z20/bazaar/start.sh
 
