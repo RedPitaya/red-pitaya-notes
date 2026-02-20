@@ -9,5 +9,5 @@ REPO=$5
 # Copy bazaar projects
 cp -rv $BUILD/$SRC $BUILD/$DEST
 mv -f $BUILD/$DEST/sdr-transceiver-hpsdr-thetis $BUILD/$DEST/sdr-transceiver-hpsdr
-cp -rvf $REPO/rp_patchs/rp/$DEST/bazaar/* $BUILD
+cp -rvf $REPO/rp_patchs/rp/$DEST/bazaar/* $BUILD/$DEST
 
